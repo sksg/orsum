@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Zig
+        run: |
+          ZIG_VERSION=0.14.0
+          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+          sudo mv zig-linux-x86_64-${ZIG_VERSION} /usr/local/zig
+          sudo ln -s /usr/local/zig/zig /usr/local/bin/zig
+
+      - name: Build the project
+        run: |
+          zig build --release-fast
