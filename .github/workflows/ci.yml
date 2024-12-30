@@ -26,4 +26,4 @@ jobs:
 
       - name: Build the project
         run: |
-          zig build
+          zig build run
