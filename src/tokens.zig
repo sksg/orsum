@@ -1,6 +1,10 @@
 const std = @import("std");
+const testing = @import("testing.zig");
 
 const TokenType = enum(u8) {
+    // Sentinel values
+    Null = 0,
+    Bad,
     // Single characters
     LeftParen = '(',
     RightParen = ')',
@@ -17,7 +21,6 @@ const TokenType = enum(u8) {
     Colon = ':',
     Semicolon = ';',
     Newline = '\n',
-    NullTerminator = 0,
     Bang = '!',
     Lesser = '<',
     Equal = '=',
@@ -61,8 +64,6 @@ const TokenType = enum(u8) {
     Switch,
     // Identifers
     Identifier,
-    // Sentinel values
-    Bad,
 };
 
 const Token = struct {
@@ -72,18 +73,23 @@ const Token = struct {
     pub fn init(token_type: TokenType, lexeme_address: [*]const u8) Token {
         return .{ .token_type = token_type, .lexeme_address = lexeme_address };
     }
+
+    pub fn format(value: Token, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        const lexeme = escape_specials(token_lexeme(value));
+        try writer.print("tokens.Token{{{}, '{s}'}}", .{ value.token_type, lexeme });
+    }
 };
 
 const Tokenizer = struct {
-    input: [:0]const u8,
+    input: [*:0]const u8, // We assume unknown length, zero terminated input strings
     cursor: usize,
     current_lexeme_address: [*]const u8,
 
-    pub fn init(input: [:0]const u8) Tokenizer {
+    pub fn init(input: [*:0]const u8) Tokenizer {
         return Tokenizer{
             .input = input,
             .cursor = 0,
-            .current_lexeme_address = input.ptr[0..],
+            .current_lexeme_address = input[0..],
         };
     }
 
@@ -108,7 +114,7 @@ const Tokenizer = struct {
     }
 
     pub inline fn first_character(self: *Tokenizer) u8 {
-        self.current_lexeme_address = self.input.ptr[self.cursor..];
+        self.current_lexeme_address = self.input[self.cursor..];
         const _next = self.peek();
         self.advance_once();
         return _next;
@@ -140,6 +146,11 @@ const Tokenizer = struct {
 
     pub inline fn bad_token(self: *Tokenizer) Token {
         return Token.init(.Bad, self.current_lexeme_address);
+    }
+
+    pub inline fn null_token(self: *Tokenizer) Token {
+        // Since we cannot optimize an optional to use TokenType.Null as null, then we have to use this instead
+        return Token.init(.Null, self.current_lexeme_address);
     }
 
     pub fn string_literal(self: *Tokenizer) Token {
@@ -193,14 +204,14 @@ const Tokenizer = struct {
         return Token.init(.EndLineComment, self.current_lexeme_address);
     }
 
-    pub fn read_token(self: *Tokenizer) ?Token {
-        while (self.cursor != self.input.len + 1) { // Count the null terminator as well
+    pub fn read_token(self: *Tokenizer) Token {
+        while (self.peek() != 0) {
             const next = self.first_character();
             switch (next) {
                 // Skip characters
                 ' ', '\t', '\r' => continue,
                 // Single characters
-                '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@', 0 => return self.single_character_token(next),
+                '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@' => return self.single_character_token(next),
                 // Possibly (known) length > 1
                 '/' => return if (self.match_character('/')) self.end_line_comment() else self.single_character_token(next),
                 '.' => return if (self.match_character('.')) (self.match_token(".", .DotDotDot) orelse self.token(.DotDot)) else self.single_character_token(next),
@@ -228,7 +239,20 @@ const Tokenizer = struct {
             }
         }
 
-        return null;
+        return self.null_token();
+    }
+
+    pub fn read_into_buffer(self: *Tokenizer, buffer: []Token) usize {
+        var count: usize = 0;
+        while (count < buffer.len) {
+            const _token = self.read_token();
+            buffer[count] = _token;
+            count += 1;
+            if (_token.token_type == .Null) {
+                break;
+            }
+        }
+        return count;
     }
 };
 
@@ -245,7 +269,7 @@ fn is_numeric(character: u8) bool {
 }
 
 test "test reading tokens" {
-    const input =
+    const input: [*:0]const u8 =
         \\import std.debug
         \\import os from std
         \\
@@ -269,13 +293,36 @@ test "test reading tokens" {
         \\}  // End of line comments!
     ;
     var tokenizer = Tokenizer.init(input);
-    while (tokenizer.read_token()) |token| {
+    var buffer: [1024]Token = undefined;
+    const token_count = tokenizer.read_into_buffer(&buffer);
+    for (buffer[0..token_count]) |token| {
         std.debug.print("{}: {s}\n", .{ token.token_type, escape_specials(token_lexeme(token)) });
     }
-    tokenizer = Tokenizer.init(input);
-    while (tokenizer.read_token()) |token| {
-        std.debug.print("{s} ", .{token_lexeme(token)});
+    var generated: [1024]u8 = undefined;
+    var generated_len: usize = 0;
+    for (buffer[0..token_count]) |token| {
+        const result = std.fmt.bufPrint(generated[generated_len..], "{s} ", .{token_lexeme(token)}) catch unreachable;
+        generated_len += result.len;
+        // std.debug.print("{s} ", .{token_lexeme(token)});
     }
+    generated[generated_len] = 0; // null terminate
+
+    const generated_input: [*:0]const u8 = generated[0..generated_len :0];
+
+    //std.debug.print("{s}\n", .{generated_input});
+    //std.debug.print("Token count: {}\n", .{token_count});
+
+    var alternative_tokenizer = Tokenizer.init(generated_input);
+    var alternative_buffer: [1024]Token = undefined;
+    const alternative_token_count = alternative_tokenizer.read_into_buffer(&alternative_buffer);
+
+    try std.testing.expectEqual(token_count, alternative_token_count);
+
+    try testing.expect_equal_slices(Token, tokens_equal, buffer[0..token_count], alternative_buffer[0..token_count]);
+}
+
+fn tokens_equal(left: Token, right: Token) bool {
+    return left.token_type == right.token_type and strings_equal(token_lexeme(left), token_lexeme(right));
 }
 
 fn strings_equal(left: []const u8, right: []const u8) bool {
@@ -292,8 +339,8 @@ fn escape_specials(string: []const u8) []const u8 {
 
 fn token_lexeme(token: Token) []const u8 {
     return switch (token.token_type) {
-        // Sentinel values
-        .NullTerminator => token.lexeme_address[0..0],
+        // No lexemes
+        .Null => "", // This is the only token without a lexeme (piece of string)
         // Single characters
         .Newline, .LeftParen, .LeftBrace, .LeftBracket, .RightParen, .RightBrace, .RightBracket, .Plus, .Minus, .Star, .Slash, .Dot, .Comma, .Colon, .Semicolon, .Bang, .Lesser, .Equal, .Greater, .Ampersand, .Bar, .At => token.lexeme_address[0..1],
         // Dual characters
@@ -386,6 +433,10 @@ fn peek_end_line_comment(start_address: [*]const u8) usize {
     var cursor: usize = 0;
     while (start_address[cursor] != '\n' and start_address[cursor] != 0) {
         cursor += 1;
+    }
+    // Strip trailing whitespace
+    while (start_address[cursor - 1] == ' ' or start_address[cursor - 1] == '\t') {
+        cursor -= 1;
     }
     return cursor;
 }
