@@ -5,7 +5,7 @@ const TokenType = enum(u8) {
     // Sentinel values
     Null = 0,
     Bad,
-    // Single characters
+    // Single characters (enum value equal to ASCII value)
     LeftParen = '(',
     RightParen = ')',
     LeftBrace = '{',
@@ -28,7 +28,7 @@ const TokenType = enum(u8) {
     Ampersand = '&',
     Bar = '|',
     At = '@',
-    // Dual characters (cannot be sum of two single characters due to clashing with other tokens)
+    // Dual and triple characters (cannot be sum of individual characters due to clashing with ASCII values)
     ColonEqual = 128, // = (':' + '='),
     BangEqual, // = ('!' + '='),
     LesserEqual, // = ('<' + '='),
