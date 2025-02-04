@@ -30,6 +30,7 @@ test "disasembly of single instructions" {
     std.debug.print("\nDisasembly of single instructions:\n{s}\n", .{disasemble.types_ruler(InstructionSet, "=")});
     std.debug.print("{s}\n", .{disasemble.instruction_type(InstructionSet, OperationType.Load)});
     std.debug.print("{s}\n", .{disasemble.instruction_type(InstructionSet, OperationType.LoadLong)});
+    std.debug.print("{s}\n", .{disasemble.types_ruler(InstructionSet, "-")});
 }
 
 test "disasembly of instruction set" {
@@ -44,6 +45,7 @@ test "disasembly of single instruction values" {
     std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, 42, OperationType.Load, .{ .source = 255, .destination = 255 })});
     std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, 43, OperationType.LoadLong, .{ .source = 0, .destination = 0 })});
     std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, 43, OperationType.LoadLong, .{ .source = 12345678, .destination = 12345678 })});
+    std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "-")});
 }
 
 test "disasembly of instruction value lists" {
@@ -59,6 +61,7 @@ test "disasembly of instruction value lists" {
 
     std.debug.print("\nDisasembly of instruction list:\n{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
     std.debug.print("{s}\n", .{disasemble.instruction_list(InstructionSet, 20, list.items)});
+    std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "-")});
 }
 
 test "Test disasembly" {
@@ -85,57 +88,56 @@ test "Test disasembly" {
     // chunk.print_disasembly_with_input(dummy_input);
 }
 
-const VirtualMachine = struct {
-    chunk: *const IRChunk,
-    instruction_cursor: usize,
+pub fn VirtualMachine(comptime debug_mode: bool) type {
+    return struct {
+        const Self = @This();
+        const DebugMode = debug_mode;
+        chunk: *const IRChunk,
+        instruction_cursor: usize,
 
-    pub fn init(chunk: *const IRChunk) VirtualMachine {
-        return VirtualMachine{
-            .chunk = chunk,
-            .instruction_cursor = 0,
-        };
-    }
-
-    pub fn read_operation(self: *VirtualMachine) OperationType {
-        const operation: OperationType = @enumFromInt(self.chunk.bytecode.items[self.instruction_cursor]);
-        self.instruction_cursor += 1;
-        return operation;
-    }
-
-    pub fn read_operand_u8(self: *VirtualMachine) u8 {
-        const operand = self.chunk.bytecode.items[self.instruction_cursor];
-        self.instruction_cursor += 1;
-        return operand;
-    }
-
-    pub fn read_operand_u24(self: *VirtualMachine) u24 {
-        const operand_low: u24 = self.chunk.bytecode.items[self.instruction_cursor];
-        self.instruction_cursor += 1;
-        const operand_mid: u24 = self.chunk.bytecode.items[self.instruction_cursor];
-        self.instruction_cursor += 1;
-        const operand_high: u24 = self.chunk.bytecode.items[self.instruction_cursor];
-        self.instruction_cursor += 1;
-        return operand_low + (operand_mid << 8) + (operand_high << 16);
-    }
-
-    pub fn is_at_end(self: *VirtualMachine) bool {
-        return self.instruction_cursor >= self.chunk.bytecode.items.len;
-    }
-
-    pub fn interpret(self: *VirtualMachine) u8 {
-        while (!self.is_at_end()) {
-            const operation = self.read_operation();
-            switch (operation) {
-                .Load => std.debug.print("Registers[{1}] = Constants[{0}]\n", .{ self.read_operand_u8(), self.read_operand_u8() }),
-                .LoadLong => std.debug.print("Registers[{1}] = Constants[{0}]\n", .{ self.read_operand_u24(), self.read_operand_u24() }),
-                .Exit => return self.read_operand_u8(),
-            }
+        pub fn init(chunk: *const IRChunk) Self {
+            return Self{
+                .chunk = chunk,
+                .instruction_cursor = 0,
+            };
         }
 
-        return 0;
-    }
-};
+        pub fn is_at_end(self: *Self) bool {
+            return self.instruction_cursor >= self.chunk.bytecode.items.len;
+        }
 
+        pub fn interpret(self: *Self) u8 {
+            if (DebugMode)
+                std.debug.print("\nBegin interpretation:\n{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
+            while (!self.is_at_end()) {
+                const current_cursor = self.instruction_cursor;
+                const operation = self.chunk.read_operation(&self.instruction_cursor);
+                switch (operation) {
+                    .Load => {
+                        const operands = self.chunk.read_operands(.Load, &self.instruction_cursor);
+                        if (DebugMode)
+                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .Load, operands)});
+                    },
+                    .LoadLong => {
+                        const operands = self.chunk.read_operands(.LoadLong, &self.instruction_cursor);
+                        if (DebugMode)
+                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .LoadLong, operands)});
+                    },
+                    .Exit => {
+                        const operands = self.chunk.read_operands(.Exit, &self.instruction_cursor);
+                        if (DebugMode) {
+                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .Exit, operands)});
+                            std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "-")});
+                        }
+                        return operands.exit_code;
+                    },
+                }
+            }
+
+            return 0;
+        }
+    };
+}
 test "test virtual machine" {
     const allocator = std.testing.allocator;
 
@@ -154,11 +156,25 @@ test "test virtual machine" {
     try chunk.append_instruction(null, .LoadLong, .{ .source = @intCast(constant_index_long), .destination = 0 });
     try chunk.append_instruction(null, .Exit, .{ .exit_code = 0 });
 
-    // chunk.print_disasembly();
+    var instruction_list = std.ArrayList(InstructionSet).init(allocator);
+    defer instruction_list.deinit();
 
-    var vm = VirtualMachine.init(&chunk);
+    try chunk.unpack_into_instruction_list(&instruction_list);
+    std.debug.print("\nDisasembly of instruction list:\n{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
+    for (instruction_list.items, 0..) |instruction, index| {
+        const operation: std.meta.Tag(InstructionSet) = @enumFromInt(@intFromEnum(instruction));
+        switch (operation) {
+            inline else => |op| {
+                const operands = @field(instruction, @tagName(op));
+                std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, index, op, operands)});
+            },
+        }
+    }
+    std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "-")});
+
+    var vm = VirtualMachine(true).init(&chunk);
 
     const exit_code = vm.interpret();
 
-    std.debug.print("Exit code: {}\n", .{exit_code});
+    std.debug.print("Intepreter has exited normally with code {}!\n", .{exit_code});
 }
