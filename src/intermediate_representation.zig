@@ -61,6 +61,78 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
             try self.constants.append(constant);
             return @intCast(self.constants.items.len - 1);
         }
+
+        pub fn read_operation(self: Self, cursor: *usize) OperationType {
+            const operation: OperationType = @enumFromInt(self.bytecode.items[cursor.*]);
+            cursor.* += 1;
+            return operation;
+        }
+
+        pub fn read_operand(self: Self, comptime operand_type: type, cursor: *usize) operand_type {
+            var operand: operand_type = undefined;
+            if (@bitSizeOf(operand_type) >= 8) {
+                operand = @as(operand_type, self.bytecode.items[cursor.*]) << 0;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 16) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 8;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 24) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 16;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 32) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 24;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 40) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 32;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 48) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 40;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 56) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 48;
+                cursor.* += 1;
+            }
+            if (@bitSizeOf(operand_type) >= 64) {
+                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 56;
+                cursor.* += 1;
+            }
+
+            return operand;
+        }
+
+        pub fn read_operands(self: Self, comptime operation: OperationType, cursor: *usize) OperandType(operation) {
+            var operands: OperandType(operation) = undefined;
+            inline for (@typeInfo(OperandType(operation)).Struct.fields) |field| {
+                @field(operands, field.name) = self.read_operand(field.type, cursor);
+            }
+            return operands;
+        }
+
+        pub fn read_instruction(self: Self, cursor: *usize) InstructionSet {
+            const operation = self.read_operation(cursor);
+            switch (operation) {
+                inline else => |op| {
+                    var operands: OperandType(op) = undefined;
+                    inline for (@typeInfo(OperandType(op)).Struct.fields) |field| {
+                        @field(operands, field.name) = self.read_operand(field.type, cursor);
+                    }
+                    return @unionInit(InstructionSet, @tagName(op), operands);
+                },
+            }
+        }
+
+        pub fn unpack_into_instruction_list(self: Self, instruction_list: *std.ArrayList(InstructionSet)) !void {
+            var cursor: usize = 0;
+            while (cursor < self.bytecode.items.len) {
+                try instruction_list.append(self.read_instruction(&cursor));
+            }
+        }
     };
 }
 
