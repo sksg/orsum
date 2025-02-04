@@ -10,17 +10,19 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
         }
         pub const AddressType = _AddressType;
 
-        pub const ConstantTypeTag = enum { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64 };
-        pub const ContantType = union(ConstantTypeTag) { u8: u8, u16: u16, u32: u32, u64: u64, i8: i8, i16: i16, i32: i32, i64: i64, f32: f32, f64: f64 };
+        pub const ValueTypeTag = enum { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64 };
+        pub const ValueType = union(ValueTypeTag) { u8: u8, u16: u16, u32: u32, u64: u64, i8: i8, i16: i16, i32: i32, i64: i64, f32: f32, f64: f64 };
 
         bytecode: std.ArrayList(u8),
-        constants: std.ArrayList(ContantType),
+        constants: std.ArrayList(ValueType),
+        register_count: usize,
         debug_info: RunLengthEncodedArrayList(AddressType),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return Self{
                 .bytecode = std.ArrayList(u8).init(allocator),
-                .constants = std.ArrayList(ContantType).init(allocator),
+                .constants = std.ArrayList(ValueType).init(allocator),
+                .register_count = 0,
                 .debug_info = RunLengthEncodedArrayList(AddressType).init(allocator),
             };
         }
@@ -29,6 +31,12 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
             self.bytecode.deinit();
             self.constants.deinit();
             self.debug_info.deinit();
+        }
+
+        pub fn new_register(self: *Self) usize {
+            const register = self.register_count;
+            self.register_count += 1;
+            return register;
         }
 
         pub fn append_instruction(self: *Self, address: ?AddressType, comptime operation: OperationType, operands: Self.OperandType(operation)) !void {
@@ -57,7 +65,7 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
             }
         }
 
-        pub fn append_constant(self: *Self, constant: ContantType) !u32 {
+        pub fn append_constant(self: *Self, constant: ValueType) !u32 {
             try self.constants.append(constant);
             return @intCast(self.constants.items.len - 1);
         }
