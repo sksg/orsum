@@ -10,8 +10,7 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
         }
         pub const AddressType = _AddressType;
 
-        pub const ValueTypeTag = enum { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64 };
-        pub const ValueType = union(ValueTypeTag) { u8: u8, u16: u16, u32: u32, u64: u64, i8: i8, i16: i16, i32: i32, i64: i64, f32: f32, f64: f64 };
+        pub const ValueType = union(enum) { u8: u8, u16: u16, u32: u32, u64: u64, i8: i8, i16: i16, i32: i32, i64: i64, f32: f32, f64: f64 };
 
         bytecode: std.ArrayList(u8),
         constants: std.ArrayList(ValueType),
