@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
+pub fn Chunk(_InstructionSet: type, _ValueType: type, _AddressType: type) type {
     return struct {
         const Self = @This();
         pub const InstructionSet = _InstructionSet;
@@ -8,9 +8,8 @@ pub fn Chunk(_InstructionSet: type, _AddressType: type) type {
         pub fn OperandType(comptime operation: OperationType) type {
             return @TypeOf(@field(@unionInit(InstructionSet, @tagName(operation), undefined), @tagName(operation)));
         }
+        pub const ValueType = _ValueType;
         pub const AddressType = _AddressType;
-
-        pub const ValueType = union(enum) { u8: u8, u16: u16, u32: u32, u64: u64, i8: i8, i16: i16, i32: i32, i64: i64, f32: f32, f64: f64 };
 
         bytecode: std.ArrayList(u8),
         constants: std.ArrayList(ValueType),
