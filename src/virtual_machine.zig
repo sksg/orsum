@@ -1,5 +1,6 @@
 const std = @import("std");
 const ir = @import("intermediate_representation.zig");
+const values = @import("values.zig");
 const disasemble = @import("disasemble.zig");
 
 const InstructionSet = union(enum(u8)) {
@@ -57,64 +58,15 @@ const InstructionSet = union(enum(u8)) {
 };
 
 const OperationType = std.meta.Tag(InstructionSet);
+const ValueType = values.ValueType;
 const AddressType = [*]const u8;
-const IRChunk = ir.Chunk(InstructionSet, AddressType);
-
-pub const binary = struct {
-    pub fn add(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
-        if (@intFromEnum(left) != @intFromEnum(right))
-            return error.DifferentTypes;
-
-        switch (left) {
-            inline else => |lvalue| {
-                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
-                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue + rvalue);
-            },
-        }
-    }
-
-    pub fn subtract(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
-        if (@intFromEnum(left) != @intFromEnum(right))
-            return error.DifferentTypes;
-
-        switch (left) {
-            inline else => |lvalue| {
-                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
-                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue - rvalue);
-            },
-        }
-    }
-
-    pub fn multiply(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
-        if (@intFromEnum(left) != @intFromEnum(right))
-            return error.DifferentTypes;
-
-        switch (left) {
-            inline else => |lvalue| {
-                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
-                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue * rvalue);
-            },
-        }
-    }
-
-    pub fn divide(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
-        if (@intFromEnum(left) != @intFromEnum(right))
-            return error.DifferentTypes;
-
-        switch (left) {
-            inline else => |lvalue| {
-                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
-                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), @divTrunc(lvalue, rvalue));
-            },
-        }
-    }
-};
+const IRChunk = ir.Chunk(InstructionSet, ValueType, AddressType);
 
 pub fn VirtualMachine(comptime debug_mode: bool) type {
     return struct {
         const Self = @This();
         const DebugMode = debug_mode;
-        register_stack: std.ArrayList(IRChunk.ValueType),
+        register_stack: std.ArrayList(ValueType),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             if (DebugMode) {
@@ -124,7 +76,7 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
             }
 
             return Self{
-                .register_stack = std.ArrayList(IRChunk.ValueType).init(allocator),
+                .register_stack = std.ArrayList(ValueType).init(allocator),
             };
         }
 
@@ -171,26 +123,23 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
                     },
                     .Negate => {
                         const operands = chunk.read_operands(.Negate, &instruction_cursor);
-                        switch (registers[operands.source]) {
-                            .u8, .u16, .u32, .u64 => return error.NegateUnsigned,
-                            inline else => |value| registers[operands.destination] = @unionInit(IRChunk.ValueType, @typeName(@TypeOf(value)), -value),
-                        }
+                        registers[operands.destination] = registers[operands.source].negate();
                     },
                     .Add => {
                         const operands = chunk.read_operands(.Add, &instruction_cursor);
-                        registers[operands.destination] = try binary.add(registers[operands.source_0], registers[operands.source_1]);
+                        registers[operands.destination] = try registers[operands.source_0].add(registers[operands.source_1]);
                     },
                     .Subtract => {
                         const operands = chunk.read_operands(.Subtract, &instruction_cursor);
-                        registers[operands.destination] = try binary.subtract(registers[operands.source_0], registers[operands.source_1]);
+                        registers[operands.destination] = try registers[operands.source_0].subtract(registers[operands.source_1]);
                     },
                     .Multiply => {
                         const operands = chunk.read_operands(.Multiply, &instruction_cursor);
-                        registers[operands.destination] = try binary.multiply(registers[operands.source_0], registers[operands.source_1]);
+                        registers[operands.destination] = try registers[operands.source_0].multiply(registers[operands.source_1]);
                     },
                     .Divide => {
                         const operands = chunk.read_operands(.Divide, &instruction_cursor);
-                        registers[operands.destination] = try binary.divide(registers[operands.source_0], registers[operands.source_1]);
+                        registers[operands.destination] = try registers[operands.source_0].divide(registers[operands.source_1]);
                     },
                     .Print => {
                         const operands = chunk.read_operands(.Print, &instruction_cursor);
@@ -213,7 +162,7 @@ test "test virtual machine" {
     var chunk = IRChunk.init(allocator);
     defer chunk.deinit();
 
-    const constants = .{ try chunk.append_constant(.{ .u8 = 3 }), try chunk.append_constant(.{ .u8 = 4 }) };
+    const constants = .{ try chunk.append_constant(.{ .Integer = 3 }), try chunk.append_constant(.{ .Integer = 4 }) };
     const register = .{ chunk.new_register(), chunk.new_register(), chunk.new_register() };
 
     try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[0]), .destination = @intCast(register[0]) });
