@@ -16,6 +16,40 @@ const InstructionSet = union(enum(u8)) {
         destination: u24,
         pub const __note = "Registers[destination] = Constants[source]";
     },
+
+    Negate: struct {
+        source: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = -Registers[source]";
+    },
+    Add: struct {
+        source_0: u8,
+        source_1: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = Registers[source_0] + Registers[source_1]";
+    },
+    Subtract: struct {
+        source_0: u8,
+        source_1: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = Registers[source_0] - Registers[source_1]";
+    },
+    Multiply: struct {
+        source_0: u8,
+        source_1: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = Registers[source_0] * Registers[source_1]";
+    },
+    Divide: struct {
+        source_0: u8,
+        source_1: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = Registers[source_0] / Registers[source_1]";
+    },
+    Print: struct {
+        source: u8,
+        pub const __note = "Print(Registers[source])";
+    },
     ExitVirtualMachine: struct {
         exit_code: u8,
         pub const __note = "Exit(exit_code)";
@@ -25,6 +59,56 @@ const InstructionSet = union(enum(u8)) {
 const OperationType = std.meta.Tag(InstructionSet);
 const AddressType = [*]const u8;
 const IRChunk = ir.Chunk(InstructionSet, AddressType);
+
+pub const binary = struct {
+    pub fn add(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        switch (left) {
+            inline else => |lvalue| {
+                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
+                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue + rvalue);
+            },
+        }
+    }
+
+    pub fn subtract(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        switch (left) {
+            inline else => |lvalue| {
+                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
+                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue - rvalue);
+            },
+        }
+    }
+
+    pub fn multiply(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        switch (left) {
+            inline else => |lvalue| {
+                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
+                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), lvalue * rvalue);
+            },
+        }
+    }
+
+    pub fn divide(left: IRChunk.ValueType, right: IRChunk.ValueType) !IRChunk.ValueType {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        switch (left) {
+            inline else => |lvalue| {
+                const rvalue = @field(right, @typeName(@TypeOf(lvalue)));
+                return @unionInit(IRChunk.ValueType, @typeName(@TypeOf(lvalue)), @divTrunc(lvalue, rvalue));
+            },
+        }
+    }
+};
 
 pub fn VirtualMachine(comptime debug_mode: bool) type {
     return struct {
@@ -52,6 +136,19 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
             return instruction_cursor >= chunk.bytecode.items.len;
         }
 
+        pub fn debug_trace_execution(chunk: *const IRChunk, current_cursor: usize) void {
+            var debug_cursor = current_cursor;
+            if (DebugMode) {
+                const operation: OperationType = chunk.read_operation(&debug_cursor);
+                switch (operation) {
+                    inline else => |op| {
+                        const operands = chunk.read_operands(op, &debug_cursor);
+                        std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, op, operands)});
+                    },
+                }
+            }
+        }
+
         pub fn interpret(self: *Self, chunk: *const IRChunk) !u8 {
             var registers = try self.register_stack.addManyAsSlice(chunk.register_count);
 
@@ -60,26 +157,47 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
             var instruction_cursor: usize = 0;
             while (!is_at_end(chunk, instruction_cursor)) {
                 const current_cursor = instruction_cursor;
+                debug_trace_execution(chunk, current_cursor);
+
                 const operation: OperationType = chunk.read_operation(&instruction_cursor);
                 switch (operation) {
                     .LoadConstant => {
                         const operands = chunk.read_operands(.LoadConstant, &instruction_cursor);
-                        if (DebugMode)
-                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .LoadConstant, operands)});
                         registers[operands.destination] = chunk.constants.items[operands.source];
                     },
                     .LoadConstantLong => {
                         const operands = chunk.read_operands(.LoadConstantLong, &instruction_cursor);
-                        if (DebugMode)
-                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .LoadConstantLong, operands)});
                         registers[operands.destination] = chunk.constants.items[operands.source];
+                    },
+                    .Negate => {
+                        const operands = chunk.read_operands(.Negate, &instruction_cursor);
+                        switch (registers[operands.source]) {
+                            .u8, .u16, .u32, .u64 => return error.NegateUnsigned,
+                            inline else => |value| registers[operands.destination] = @unionInit(IRChunk.ValueType, @typeName(@TypeOf(value)), -value),
+                        }
+                    },
+                    .Add => {
+                        const operands = chunk.read_operands(.Add, &instruction_cursor);
+                        registers[operands.destination] = try binary.add(registers[operands.source_0], registers[operands.source_1]);
+                    },
+                    .Subtract => {
+                        const operands = chunk.read_operands(.Subtract, &instruction_cursor);
+                        registers[operands.destination] = try binary.subtract(registers[operands.source_0], registers[operands.source_1]);
+                    },
+                    .Multiply => {
+                        const operands = chunk.read_operands(.Multiply, &instruction_cursor);
+                        registers[operands.destination] = try binary.multiply(registers[operands.source_0], registers[operands.source_1]);
+                    },
+                    .Divide => {
+                        const operands = chunk.read_operands(.Divide, &instruction_cursor);
+                        registers[operands.destination] = try binary.divide(registers[operands.source_0], registers[operands.source_1]);
+                    },
+                    .Print => {
+                        const operands = chunk.read_operands(.Print, &instruction_cursor);
+                        std.debug.print("{}\n", .{registers[operands.source]});
                     },
                     .ExitVirtualMachine => {
                         const operands = chunk.read_operands(.ExitVirtualMachine, &instruction_cursor);
-                        if (DebugMode) {
-                            std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, .ExitVirtualMachine, operands)});
-                            std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
-                        }
                         return operands.exit_code;
                     },
                 }
@@ -95,19 +213,13 @@ test "test virtual machine" {
     var chunk = IRChunk.init(allocator);
     defer chunk.deinit();
 
-    const constant_index = try chunk.append_constant(.{ .u8 = 12 });
+    const constants = .{ try chunk.append_constant(.{ .u8 = 3 }), try chunk.append_constant(.{ .u8 = 4 }) };
+    const register = .{ chunk.new_register(), chunk.new_register(), chunk.new_register() };
 
-    for (0..300) |_| {
-        _ = try chunk.append_constant(.{ .u8 = 34 });
-    }
-
-    const constant_index_long = try chunk.append_constant(.{ .u8 = 56 });
-
-    const register_0 = chunk.new_register();
-    const register_1 = chunk.new_register();
-
-    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constant_index), .destination = @intCast(register_0) });
-    try chunk.append_instruction(null, .LoadConstantLong, .{ .source = @intCast(constant_index_long), .destination = @intCast(register_1) });
+    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[0]), .destination = @intCast(register[0]) });
+    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[1]), .destination = @intCast(register[1]) });
+    try chunk.append_instruction(null, .Multiply, .{ .source_0 = @intCast(register[0]), .source_1 = @intCast(register[1]), .destination = @intCast(register[2]) });
+    try chunk.append_instruction(null, .Print, .{ .source = @intCast(register[2]) });
     try chunk.append_instruction(null, .ExitVirtualMachine, .{ .exit_code = 0 });
 
     var instruction_list = std.ArrayList(InstructionSet).init(allocator);
