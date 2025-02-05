@@ -66,7 +66,7 @@ const TokenType = enum(u8) {
     Identifier,
 };
 
-const Token = struct {
+pub const Token = struct {
     token_type: TokenType,
     lexeme_address: [*]const u8,
 
@@ -80,24 +80,81 @@ const Token = struct {
     }
 };
 
-const Tokenizer = struct {
-    input: [*:0]const u8, // We assume unknown length, zero terminated input strings
+pub const Tokenizer = struct {
+    input: []const u8, // We assume unknown length, zero terminated input strings
     cursor: usize,
     current_lexeme_address: [*]const u8,
 
-    pub fn init(input: [*:0]const u8) Tokenizer {
+    pub fn init(input: []const u8) Tokenizer {
         return Tokenizer{
             .input = input,
             .cursor = 0,
-            .current_lexeme_address = input[0..],
+            .current_lexeme_address = input.ptr,
         };
     }
 
+    pub fn read_token(self: *Tokenizer) Token {
+        while (self.cursor < self.input.len) {
+            const next = self.first_character();
+            switch (next) {
+                // Skip characters
+                ' ', '\t', '\r', 0 => continue,
+                // Single characters
+                '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@' => return self.single_character_token(next),
+                // Possibly (known) length > 1
+                '/' => return if (self.match_character('/')) self.end_line_comment() else self.single_character_token(next),
+                '.' => return if (self.match_character('.')) (self.match_token(".", .DotDotDot) orelse self.token(.DotDot)) else self.single_character_token(next),
+                ':' => return self.match_token("=", .ColonEqual) orelse self.single_character_token(next),
+                '!' => return self.match_token("=", .BangEqual) orelse self.single_character_token(next),
+                '<' => return self.match_token("=", .LesserEqual) orelse self.single_character_token(next),
+                '=' => return self.match_token("=", .EqualEqual) orelse self.single_character_token(next),
+                '>' => return self.match_token("=", .GreaterEqual) orelse self.single_character_token(next),
+                '+' => return self.match_token("=", .PlusEqual) orelse self.match_token("+", .PlusPlus) orelse self.single_character_token(next),
+                '-' => return self.match_token("=", .MinusEqual) orelse self.match_token("-", .MinusMinus) orelse self.single_character_token(next),
+                '&' => return self.match_token("=", .AmpersandEqual) orelse self.match_token("&", .AmpersandAmpersand) orelse self.single_character_token(next),
+                '|' => return self.match_token("=", .BarEqual) orelse self.match_token("|", .BarBar) orelse self.single_character_token(next),
+                't' => return self.match_token("rue", .True) orelse self.identifier(),
+                'f' => return self.match_token("alse", .False) orelse self.match_token("or", .For) orelse self.match_token("rom", .From) orelse self.identifier(),
+                'i' => return self.match_token("f", .If) orelse self.match_token("mport", .Import) orelse self.identifier(),
+                'e' => return self.match_token("lse", .Else) orelse self.identifier(),
+                'w' => return self.match_token("hile", .While) orelse self.identifier(),
+                'd' => return self.match_token("o", .Do) orelse self.match_token("ef", .Def) orelse self.identifier(),
+                's' => return self.match_token("witch", .Switch) orelse self.identifier(),
+                // Unknown length
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => return self.number_literal(),
+                '"' => return self.string_literal(),
+                // Only identifiers left
+                else => return if (is_alpha(next)) self.identifier() else self.bad_token(),
+            }
+        }
+
+        return self.null_token();
+    }
+
+    pub fn read_into_buffer(self: *Tokenizer, buffer: []Token) usize {
+        var count: usize = 0;
+        while (count < buffer.len) {
+            const _token = self.read_token();
+            buffer[count] = _token;
+            count += 1;
+            if (_token.token_type == .Null) {
+                break;
+            }
+        }
+        return count;
+    }
+
     pub inline fn peek(self: *Tokenizer) u8 {
+        if (self.cursor >= self.input.len) {
+            return 0;
+        }
         return self.input[self.cursor];
     }
 
     pub inline fn peek_second(self: *Tokenizer) u8 {
+        if (self.cursor + 1 >= self.input.len) {
+            return 0;
+        }
         return self.input[self.cursor + 1];
     }
 
@@ -114,7 +171,7 @@ const Tokenizer = struct {
     }
 
     pub inline fn first_character(self: *Tokenizer) u8 {
-        self.current_lexeme_address = self.input[self.cursor..];
+        self.current_lexeme_address = self.input.ptr[self.cursor..];
         const _next = self.peek();
         self.advance_once();
         return _next;
@@ -202,57 +259,6 @@ const Tokenizer = struct {
             self.advance_once();
         }
         return Token.init(.EndLineComment, self.current_lexeme_address);
-    }
-
-    pub fn read_token(self: *Tokenizer) Token {
-        while (self.peek() != 0) {
-            const next = self.first_character();
-            switch (next) {
-                // Skip characters
-                ' ', '\t', '\r' => continue,
-                // Single characters
-                '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@' => return self.single_character_token(next),
-                // Possibly (known) length > 1
-                '/' => return if (self.match_character('/')) self.end_line_comment() else self.single_character_token(next),
-                '.' => return if (self.match_character('.')) (self.match_token(".", .DotDotDot) orelse self.token(.DotDot)) else self.single_character_token(next),
-                ':' => return self.match_token("=", .ColonEqual) orelse self.single_character_token(next),
-                '!' => return self.match_token("=", .BangEqual) orelse self.single_character_token(next),
-                '<' => return self.match_token("=", .LesserEqual) orelse self.single_character_token(next),
-                '=' => return self.match_token("=", .EqualEqual) orelse self.single_character_token(next),
-                '>' => return self.match_token("=", .GreaterEqual) orelse self.single_character_token(next),
-                '+' => return self.match_token("=", .PlusEqual) orelse self.match_token("+", .PlusPlus) orelse self.single_character_token(next),
-                '-' => return self.match_token("=", .MinusEqual) orelse self.match_token("-", .MinusMinus) orelse self.single_character_token(next),
-                '&' => return self.match_token("=", .AmpersandEqual) orelse self.match_token("&", .AmpersandAmpersand) orelse self.single_character_token(next),
-                '|' => return self.match_token("=", .BarEqual) orelse self.match_token("|", .BarBar) orelse self.single_character_token(next),
-                't' => return self.match_token("rue", .True) orelse self.identifier(),
-                'f' => return self.match_token("alse", .False) orelse self.match_token("or", .For) orelse self.match_token("rom", .From) orelse self.identifier(),
-                'i' => return self.match_token("f", .If) orelse self.match_token("mport", .Import) orelse self.identifier(),
-                'e' => return self.match_token("lse", .Else) orelse self.identifier(),
-                'w' => return self.match_token("hile", .While) orelse self.identifier(),
-                'd' => return self.match_token("o", .Do) orelse self.match_token("ef", .Def) orelse self.identifier(),
-                's' => return self.match_token("witch", .Switch) orelse self.identifier(),
-                // Unknown length
-                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => return self.number_literal(),
-                '"' => return self.string_literal(),
-                // Only identifiers left
-                else => return if (is_alpha(next)) self.identifier() else self.bad_token(),
-            }
-        }
-
-        return self.null_token();
-    }
-
-    pub fn read_into_buffer(self: *Tokenizer, buffer: []Token) usize {
-        var count: usize = 0;
-        while (count < buffer.len) {
-            const _token = self.read_token();
-            buffer[count] = _token;
-            count += 1;
-            if (_token.token_type == .Null) {
-                break;
-            }
-        }
-        return count;
     }
 };
 
