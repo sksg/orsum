@@ -275,7 +275,7 @@ fn is_numeric(character: u8) bool {
 }
 
 test "test reading tokens" {
-    const input: [*:0]const u8 =
+    const input: []const u8 =
         \\import std.debug
         \\import os from std
         \\
@@ -313,7 +313,7 @@ test "test reading tokens" {
     }
     generated[generated_len] = 0; // null terminate
 
-    const generated_input: [*:0]const u8 = generated[0..generated_len :0];
+    const generated_input: []const u8 = generated[0..generated_len];
 
     //std.debug.print("{s}\n", .{generated_input});
     //std.debug.print("Token count: {}\n", .{token_count});
