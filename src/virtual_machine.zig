@@ -17,6 +17,11 @@ const InstructionSet = union(enum(u8)) {
         destination: u24,
         pub const __note = "Registers[destination] = Constants[source]";
     },
+    Copy: struct {
+        source: u8,
+        destination: u8,
+        pub const __note = "Registers[destination] = Registers[source]";
+    },
 
     Negate: struct {
         source: u8,
@@ -57,10 +62,10 @@ const InstructionSet = union(enum(u8)) {
     },
 };
 
-const OperationType = std.meta.Tag(InstructionSet);
-const ValueType = values.ValueType;
-const AddressType = [*]const u8;
-const IRChunk = ir.Chunk(InstructionSet, ValueType, AddressType);
+pub const OperationType = std.meta.Tag(InstructionSet);
+pub const ValueType = values.ValueType;
+pub const AddressType = [*]const u8;
+pub const IRChunk = ir.Chunk(InstructionSet, ValueType, AddressType);
 
 pub fn VirtualMachine(comptime debug_mode: bool) type {
     return struct {
@@ -120,6 +125,10 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
                     .LoadConstantLong => {
                         const operands = chunk.read_operands(.LoadConstantLong, &instruction_cursor);
                         registers[operands.destination] = chunk.constants.items[operands.source];
+                    },
+                    .Copy => {
+                        const operands = chunk.read_operands(.Copy, &instruction_cursor);
+                        registers[operands.destination] = registers[operands.source];
                     },
                     .Negate => {
                         const operands = chunk.read_operands(.Negate, &instruction_cursor);
