@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = @import("testing.zig");
 
-const TokenType = enum(u8) {
+pub const TokenType = enum(u8) {
     // Sentinel values
     Null = 0,
     Bad,
@@ -343,7 +343,7 @@ fn escape_specials(string: []const u8) []const u8 {
     return if (strings_equal(string, "\n"[0..1])) "\\n" else if (strings_equal(string, "")) "\\0" else string;
 }
 
-fn token_lexeme(token: Token) []const u8 {
+pub fn token_lexeme(token: Token) []const u8 {
     return switch (token.token_type) {
         // No lexemes
         .Null => "", // This is the only token without a lexeme (piece of string)
