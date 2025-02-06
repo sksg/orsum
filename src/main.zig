@@ -1,6 +1,7 @@
 const std = @import("std");
 const tokens = @import("tokens.zig");
-const vm = @import("virtual_machine.zig");
+const parse = @import("parse.zig");
+const virtual_machine = @import("virtual_machine.zig");
 
 // See exit codes at https://man.freebsd.org/cgi/man.cgi?query=sysexits&apropos=0&sektion=0&manpath=FreeBSD+4.3-RELEASE&format=html
 pub const ExitCode = enum(u8) {
@@ -42,13 +43,24 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     defer allocator.free(input_buffer);
 
     var tokenizer = tokens.Tokenizer.init(input_buffer);
+    var chunk = virtual_machine.IRChunk.init(allocator);
+    var return_register: u32 = undefined;
     while (tokenizer.peek() != 0) {
         var token_buffer: [1024]tokens.Token = undefined;
         const token_count = tokenizer.read_into_buffer(&token_buffer);
-        for (token_buffer[0..token_count]) |token| {
-            std.debug.print("{}\n", .{token});
-        }
+        var parser = parse.Parser.init(token_buffer[0..token_count]);
+        return_register = try parser.into(&chunk);
+        std.debug.print("return_register = {}\n", .{return_register});
     }
+
+    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = @intCast(return_register) });
+
+    var vm = virtual_machine.VirtualMachine(true).init(allocator);
+    defer vm.deinit();
+
+    std.debug.print("Run virtual machine...\n", .{});
+    const exit_code = try vm.interpret(&chunk);
+    std.debug.print("Virtual machine has exited normally with exit-code {}!\n", .{exit_code});
 }
 
 pub fn main() u8 {
@@ -60,14 +72,18 @@ pub fn main() u8 {
 
     if (args.len == 1) {
         repl(allocator) catch |err| {
+            const trace = @errorReturnTrace();
             const stderr = std.io.getStdErr();
-            stderr.writer().print("Error: {}\n", .{err}) catch {};
+            stderr.writer().print("Error: {} {}\n", .{ err, trace.? }) catch {};
+
             return exit(.SoftwareError);
         };
     } else if (args.len == 2) {
         runFile(allocator, args[1]) catch |err| {
+            const trace = @errorReturnTrace();
             const stderr = std.io.getStdErr();
             stderr.writer().print("Error: {}\n", .{err}) catch {};
+            stderr.writer().print("Error: {} {}\n", .{ err, trace.? }) catch {};
             return exit(.SoftwareError);
         };
     } else {
