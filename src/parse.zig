@@ -6,11 +6,14 @@ const TokenType = tokens.TokenType;
 
 pub const Parser = struct {
     const Self = @This();
-    tokens: []const tokens.Token,
+    const TokenBufferSize = 1024;
+    tokenizer: *tokens.Tokenizer,
+    tokens: [TokenBufferSize]tokens.Token,
+    token_count: usize,
     cursor: usize = 0,
 
-    pub fn init(_tokens: []const tokens.Token) Self {
-        return Self{ .tokens = _tokens };
+    pub fn init(tokenizer: *tokens.Tokenizer) Self {
+        return Self{ .tokenizer = tokenizer, .tokens = undefined, .token_count = 0 };
     }
 
     pub fn into(self: *Self, chunk: *vm.IRChunk) !u32 {
@@ -151,11 +154,19 @@ pub const Parser = struct {
             self.advance();
             return @intCast(destination);
         }
+
         return error.ExpectedLiteral;
     }
 
     fn at_end(self: *Self) bool {
-        return self.cursor >= self.tokens.len;
+        if (self.cursor >= self.token_count) {
+            std.debug.print("Refilling token buffer...\n", .{});
+            self.token_count = self.tokenizer.read_into_buffer(&self.tokens);
+            self.cursor = 0;
+            if (self.token_count == 0)
+                return true;
+        }
+        return false;
     }
 
     fn match(self: *Self, token_type: TokenType) bool {
