@@ -44,14 +44,9 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
 
     var tokenizer = tokens.Tokenizer.init(input_buffer);
     var chunk = virtual_machine.IRChunk.init(allocator);
-    var return_register: u32 = undefined;
-    while (tokenizer.peek() != 0) {
-        var token_buffer: [1024]tokens.Token = undefined;
-        const token_count = tokenizer.read_into_buffer(&token_buffer);
-        var parser = parse.Parser.init(token_buffer[0..token_count]);
-        return_register = try parser.into(&chunk);
-        std.debug.print("return_register = {}\n", .{return_register});
-    }
+    var parser = parse.Parser.init(&tokenizer);
+    const return_register = try parser.into(&chunk);
+    std.debug.print("return_register = {}\n", .{return_register});
 
     try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = @intCast(return_register) });
 
