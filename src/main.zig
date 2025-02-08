@@ -1,11 +1,12 @@
 const std = @import("std");
 const tokens = @import("tokens.zig");
-const parse = @import("parse.zig");
+const syntax = @import("syntax.zig");
 const virtual_machine = @import("virtual_machine.zig");
 
-// See exit codes at https://man.freebsd.org/cgi/man.cgi?query=sysexits&apropos=0&sektion=0&manpath=FreeBSD+4.3-RELEASE&format=html
+// See POSIX exit codes at https://man.freebsd.org/cgi/man.cgi?query=sysexits&apropos=0&sektion=0&manpath=FreeBSD+4.3-RELEASE&format=html
 pub const ExitCode = enum(u8) {
     Success = 0,
+    // Exit codes 1-63 are reserved for custom behaviour.
     UsageError = 64,
     SoftwareError = 70,
     OsError = 71,
@@ -44,8 +45,8 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
 
     var tokenizer = tokens.Tokenizer.init(input_buffer);
     var chunk = virtual_machine.IRChunk.init(allocator);
-    var parser = parse.Parser.init(&tokenizer);
-    const return_register = try parser.into(&chunk);
+    var parser = syntax.Parser.init(&tokenizer);
+    const return_register = try parser.parse(&chunk);
     std.debug.print("return_register = {}\n", .{return_register});
 
     try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = @intCast(return_register) });
