@@ -16,7 +16,7 @@ pub const Parser = struct {
         return Self{ .tokenizer = tokenizer, .tokens = undefined, .token_count = 0 };
     }
 
-    pub fn into(self: *Self, chunk: *vm.IRChunk) !u32 {
+    pub fn parse(self: *Self, chunk: *vm.IRChunk) !u32 {
         std.debug.print("start parsing...\n", .{});
         const return_register: u32 = @intCast(chunk.new_register());
         var last_expression_register: u32 = undefined;
