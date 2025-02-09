@@ -1,82 +1,90 @@
 const std = @import("std");
 const testing = @import("testing.zig");
 
-pub const TokenType = enum(u8) {
+pub const Token = union(enum(u8)) {
+    const Self = @This();
+    pub const Tag = std.meta.Tag(Token);
+    pub const Address = [*]const u8;
+
     // Sentinel values
-    Null = 0,
-    Bad,
+    Null: Address,
+    Bad: Address,
     // Single characters (enum value equal to ASCII value)
-    LeftParen = '(',
-    RightParen = ')',
-    LeftBrace = '{',
-    RightBrace = '}',
-    LeftBracket = '[',
-    RightBracket = ']',
-    Plus = '+',
-    Minus = '-',
-    Star = '*',
-    Slash = '/',
-    Dot = '.',
-    Comma = ',',
-    Colon = ':',
-    Semicolon = ';',
-    Newline = '\n',
-    Bang = '!',
-    Lesser = '<',
-    Equal = '=',
-    Greater = '>',
-    Ampersand = '&',
-    Bar = '|',
-    At = '@',
-    // Dual and triple characters (cannot be sum of individual characters due to clashing with ASCII values)
-    ColonEqual = 128, // = (':' + '='),
-    BangEqual, // = ('!' + '='),
-    LesserEqual, // = ('<' + '='),
-    EqualEqual, // = ('=' + '='),
-    GreaterEqual, // = ('>' + '='),
-    PlusEqual, // = ('+' + '='),
-    MinusEqual, // = ('-' + '='),
-    AmpersandEqual, // = ('&' + '='),
-    BarEqual, // = ('|' + '='),
-    PlusPlus, // = ('+' + '+'),
-    MinusMinus, // = ('-' + '-'),
-    AmpersandAmpersand, // = ('&' + '&'),
-    BarBar, // = ('|' + '|'),
-    DotDot, // = ('.' + '.'),
-    DotDotDot, // = ('.' + '.' + '.'),
+    LeftParen: Address, // = '(',
+    RightParen: Address, // = ')',
+    LeftBrace: Address, // = '{',
+    RightBrace: Address, // = '}',
+    LeftBracket: Address, // = '[',
+    RightBracket: Address, // = ']',
+    Plus: Address, // = '+',
+    Minus: Address, // = '-',
+    Star: Address, // = '*',
+    Slash: Address, // = '/',
+    Dot: Address, // = '.',
+    Comma: Address, // = ',',
+    Colon: Address, // = ':',
+    Semicolon: Address, // = ';',
+    Newline: Address, // = '\n',
+    Bang: Address, // = '!',
+    Lesser: Address, // = '<',
+    Equal: Address, // = '=',
+    Greater: Address, // = '>',
+    Ampersand: Address, // = '&',
+    Bar: Address, // = '|',
+    At: Address, // = '@',
+    ColonEqual: Address, // = (':' + '='),
+    BangEqual: Address, // = ('!' + '='),
+    LesserEqual: Address, // = ('<' + '='),
+    EqualEqual: Address, // = ('=' + '='),
+    GreaterEqual: Address, // = ('>' + '='),
+    PlusEqual: Address, // = ('+' + '='),
+    MinusEqual: Address, // = ('-' + '='),
+    AmpersandEqual: Address, // = ('&' + '='),
+    BarEqual: Address, // = ('|' + '='),
+    PlusPlus: Address, // = ('+' + '+'),
+    MinusMinus: Address, // = ('-' + '-'),
+    AmpersandAmpersand: Address, // = ('&' + '&'),
+    BarBar: Address, // = ('|' + '|'),
+    DotDot: Address, // = ('.' + '.'),
+    DotDotDot: Address, // = ('.' + '.' + '.'),
     // Literals
-    IntegerLiteral,
-    FloatLiteral,
-    StringLiteral,
-    True,
-    False,
-    EndLineComment,
+    IntegerLiteral: Address,
+    FloatLiteral: Address,
+    StringLiteral: Address,
+    True: Address,
+    False: Address,
+    EndLineComment: Address,
     // Keywords
-    Def,
-    Import,
-    From,
+    Def: Address,
+    Import: Address,
+    From: Address,
     // Control flow
-    If,
-    Else,
-    For,
-    While,
-    Do,
-    Switch,
+    If: Address,
+    Else: Address,
+    For: Address,
+    While: Address,
+    Do: Address,
+    Switch: Address,
     // Identifers
-    Identifier,
-};
+    Identifier: Address,
 
-pub const Token = struct {
-    token_type: TokenType,
-    lexeme_address: [*]const u8,
+    pub fn init(comptime _tag: Tag, _address: [*]const u8) Token {
+        return @unionInit(Token, @tagName(_tag), _address);
+    }
 
-    pub fn init(token_type: TokenType, lexeme_address: [*]const u8) Token {
-        return .{ .token_type = token_type, .lexeme_address = lexeme_address };
+    pub fn tag(self: Token) Tag {
+        return @enumFromInt(@intFromEnum(self));
+    }
+
+    pub fn address(self: Self) Address {
+        return switch (self) {
+            inline else => |_address| _address,
+        };
     }
 
     pub fn format(value: Token, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         const lexeme = escape_specials(token_lexeme(value));
-        try writer.print("tokens.Token{{{}, '{s}'}}", .{ value.token_type, lexeme });
+        try writer.print("{s}{{{s}, '{s}'}}", .{ @typeName(Token), @tagName(value.tag()), lexeme });
     }
 };
 
@@ -100,19 +108,19 @@ pub const Tokenizer = struct {
                 // Skip characters
                 ' ', '\t', '\r', 0 => continue,
                 // Single characters
-                '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@' => return self.single_character_token(next),
+                inline '(', ')', '{', '}', '[', ']', '*', ',', ';', '\n', '@' => |_next| return self.single_character_token(_next),
                 // Possibly (known) length > 1
-                '/' => return if (self.match_character('/')) self.end_line_comment() else self.single_character_token(next),
-                '.' => return if (self.match_character('.')) (self.match_token(".", .DotDotDot) orelse self.token(.DotDot)) else self.single_character_token(next),
-                ':' => return self.match_token("=", .ColonEqual) orelse self.single_character_token(next),
-                '!' => return self.match_token("=", .BangEqual) orelse self.single_character_token(next),
-                '<' => return self.match_token("=", .LesserEqual) orelse self.single_character_token(next),
-                '=' => return self.match_token("=", .EqualEqual) orelse self.single_character_token(next),
-                '>' => return self.match_token("=", .GreaterEqual) orelse self.single_character_token(next),
-                '+' => return self.match_token("=", .PlusEqual) orelse self.match_token("+", .PlusPlus) orelse self.single_character_token(next),
-                '-' => return self.match_token("=", .MinusEqual) orelse self.match_token("-", .MinusMinus) orelse self.single_character_token(next),
-                '&' => return self.match_token("=", .AmpersandEqual) orelse self.match_token("&", .AmpersandAmpersand) orelse self.single_character_token(next),
-                '|' => return self.match_token("=", .BarEqual) orelse self.match_token("|", .BarBar) orelse self.single_character_token(next),
+                inline '/' => |_next| return if (self.match_character('/')) self.end_line_comment() else self.single_character_token(_next),
+                inline '.' => |_next| return if (self.match_character('.')) (self.match_token(".", .DotDotDot) orelse self.token(.DotDot)) else self.single_character_token(_next),
+                inline ':' => |_next| return self.match_token("=", .ColonEqual) orelse self.single_character_token(_next),
+                inline '!' => |_next| return self.match_token("=", .BangEqual) orelse self.single_character_token(_next),
+                inline '<' => |_next| return self.match_token("=", .LesserEqual) orelse self.single_character_token(_next),
+                inline '=' => |_next| return self.match_token("=", .EqualEqual) orelse self.single_character_token(_next),
+                inline '>' => |_next| return self.match_token("=", .GreaterEqual) orelse self.single_character_token(_next),
+                inline '+' => |_next| return self.match_token("=", .PlusEqual) orelse self.match_token("+", .PlusPlus) orelse self.single_character_token(_next),
+                inline '-' => |_next| return self.match_token("=", .MinusEqual) orelse self.match_token("-", .MinusMinus) orelse self.single_character_token(_next),
+                inline '&' => |_next| return self.match_token("=", .AmpersandEqual) orelse self.match_token("&", .AmpersandAmpersand) orelse self.single_character_token(_next),
+                inline '|' => |_next| return self.match_token("=", .BarEqual) orelse self.match_token("|", .BarBar) orelse self.single_character_token(_next),
                 't' => return self.match_token("rue", .True) orelse self.identifier(),
                 'f' => return self.match_token("alse", .False) orelse self.match_token("or", .For) orelse self.match_token("rom", .From) orelse self.identifier(),
                 'i' => return self.match_token("f", .If) orelse self.match_token("mport", .Import) orelse self.identifier(),
@@ -137,7 +145,7 @@ pub const Tokenizer = struct {
             const _token = self.read_token();
             buffer[count] = _token;
             count += 1;
-            if (_token.token_type == .Null) {
+            if (_token == .Null) {
                 break;
             }
         }
@@ -177,21 +185,45 @@ pub const Tokenizer = struct {
         return _next;
     }
 
-    pub inline fn token(self: *Tokenizer, comptime token_type: TokenType) Token {
-        return Token.init(token_type, self.current_lexeme_address);
+    pub inline fn token(self: *Tokenizer, comptime tag: Token.Tag) Token {
+        return Token.init(tag, self.current_lexeme_address);
     }
 
-    pub fn single_character_token(self: *Tokenizer, character: u8) Token {
-        return Token.init(@enumFromInt(character), self.current_lexeme_address);
+    pub inline fn single_character_token(self: *Tokenizer, comptime character: u8) Token {
+        switch (character) {
+            '(' => return Token.init(.LeftParen, self.current_lexeme_address),
+            ')' => return Token.init(.RightParen, self.current_lexeme_address),
+            '{' => return Token.init(.LeftBrace, self.current_lexeme_address),
+            '}' => return Token.init(.RightBrace, self.current_lexeme_address),
+            '[' => return Token.init(.LeftBracket, self.current_lexeme_address),
+            ']' => return Token.init(.RightBracket, self.current_lexeme_address),
+            '*' => return Token.init(.Star, self.current_lexeme_address),
+            ',' => return Token.init(.Comma, self.current_lexeme_address),
+            ';' => return Token.init(.Semicolon, self.current_lexeme_address),
+            '\n' => return Token.init(.Newline, self.current_lexeme_address),
+            '@' => return Token.init(.At, self.current_lexeme_address),
+            '/' => return Token.init(.Slash, self.current_lexeme_address),
+            '.' => return Token.init(.Do, self.current_lexeme_address),
+            ':' => return Token.init(.Colon, self.current_lexeme_address),
+            '!' => return Token.init(.Bang, self.current_lexeme_address),
+            '<' => return Token.init(.Lesser, self.current_lexeme_address),
+            '=' => return Token.init(.Equal, self.current_lexeme_address),
+            '>' => return Token.init(.Greater, self.current_lexeme_address),
+            '+' => return Token.init(.Plus, self.current_lexeme_address),
+            '-' => return Token.init(.Minus, self.current_lexeme_address),
+            '&' => return Token.init(.Ampersand, self.current_lexeme_address),
+            '|' => return Token.init(.Bar, self.current_lexeme_address),
+            else => @compileError("Character " ++ .{character} ++ " not a 'single character token'!"),
+        }
     }
 
-    pub fn match_token(self: *Tokenizer, comptime missing: []const u8, comptime token_type: TokenType) ?Token {
+    pub fn match_token(self: *Tokenizer, comptime missing: []const u8, comptime tag: Token.Tag) ?Token {
         inline for (missing) |character| {
             if (!self.match_character(character)) {
                 return null;
             }
         }
-        return Token.init(token_type, self.current_lexeme_address);
+        return Token.init(tag, self.current_lexeme_address);
     }
 
     pub fn identifier(self: *Tokenizer) Token {
@@ -251,7 +283,13 @@ pub const Tokenizer = struct {
             while (is_numeric(self.peek()))
                 self.advance_once();
         }
-        return Token.init(if (is_bad) .Bad else (if (is_float) .FloatLiteral else .IntegerLiteral), self.current_lexeme_address);
+        if (is_bad) {
+            return Token.init(.Bad, self.current_lexeme_address);
+        } else if (is_float) {
+            return Token.init(.FloatLiteral, self.current_lexeme_address);
+        } else {
+            return Token.init(.IntegerLiteral, self.current_lexeme_address);
+        }
     }
 
     pub fn end_line_comment(self: *Tokenizer) Token {
@@ -302,7 +340,7 @@ test "test reading tokens" {
     var buffer: [1024]Token = undefined;
     const token_count = tokenizer.read_into_buffer(&buffer);
     for (buffer[0..token_count]) |token| {
-        std.debug.print("{}: {s}\n", .{ token.token_type, escape_specials(token_lexeme(token)) });
+        std.debug.print("{}: {s}\n", .{ token, escape_specials(token_lexeme(token)) });
     }
     var generated: [1024]u8 = undefined;
     var generated_len: usize = 0;
@@ -328,7 +366,7 @@ test "test reading tokens" {
 }
 
 fn tokens_equal(left: Token, right: Token) bool {
-    return left.token_type == right.token_type and strings_equal(token_lexeme(left), token_lexeme(right));
+    return left == right and strings_equal(token_lexeme(left), token_lexeme(right));
 }
 
 fn strings_equal(left: []const u8, right: []const u8) bool {
@@ -344,25 +382,25 @@ fn escape_specials(string: []const u8) []const u8 {
 }
 
 pub fn token_lexeme(token: Token) []const u8 {
-    return switch (token.token_type) {
+    return switch (token) {
         // No lexemes
         .Null => "", // This is the only token without a lexeme (piece of string)
         // Single characters
-        .Newline, .LeftParen, .LeftBrace, .LeftBracket, .RightParen, .RightBrace, .RightBracket, .Plus, .Minus, .Star, .Slash, .Dot, .Comma, .Colon, .Semicolon, .Bang, .Lesser, .Equal, .Greater, .Ampersand, .Bar, .At => token.lexeme_address[0..1],
+        .Newline, .LeftParen, .LeftBrace, .LeftBracket, .RightParen, .RightBrace, .RightBracket, .Plus, .Minus, .Star, .Slash, .Dot, .Comma, .Colon, .Semicolon, .Bang, .Lesser, .Equal, .Greater, .Ampersand, .Bar, .At => |_address| _address[0..1],
         // Dual characters
-        .ColonEqual, .BangEqual, .LesserEqual, .EqualEqual, .GreaterEqual, .PlusEqual, .PlusPlus, .MinusMinus, .MinusEqual, .AmpersandEqual, .AmpersandAmpersand, .BarEqual, .BarBar, .If, .Do, .DotDot => token.lexeme_address[0..2],
+        .ColonEqual, .BangEqual, .LesserEqual, .EqualEqual, .GreaterEqual, .PlusEqual, .PlusPlus, .MinusMinus, .MinusEqual, .AmpersandEqual, .AmpersandAmpersand, .BarEqual, .BarBar, .If, .Do, .DotDot => |_address| _address[0..2],
         // Multi-character
-        .Def, .For, .DotDotDot => token.lexeme_address[0..3],
-        .True, .Else, .From => token.lexeme_address[0..4],
-        .False, .While => token.lexeme_address[0..5],
-        .Switch, .Import => token.lexeme_address[0..6],
+        .Def, .For, .DotDotDot => |_address| _address[0..3],
+        .True, .Else, .From => |_address| _address[0..4],
+        .False, .While => |_address| _address[0..5],
+        .Switch, .Import => |_address| _address[0..6],
         // Unknown length
-        .IntegerLiteral => token.lexeme_address[0..peek_integer_literal_end(token.lexeme_address)],
-        .FloatLiteral => token.lexeme_address[0..peek_float_literal_end(token.lexeme_address)],
-        .StringLiteral => token.lexeme_address[0..peek_string_literal_end(token.lexeme_address)],
-        .Identifier => token.lexeme_address[0..peek_idenifier_end(token.lexeme_address)],
-        .EndLineComment => token.lexeme_address[0..peek_end_line_comment(token.lexeme_address)],
-        .Bad => token.lexeme_address[0..peek_bad_end(token.lexeme_address)],
+        .IntegerLiteral => |_address| _address[0..peek_integer_literal_end(_address)],
+        .FloatLiteral => |_address| _address[0..peek_float_literal_end(_address)],
+        .StringLiteral => |_address| _address[0..peek_string_literal_end(_address)],
+        .Identifier => |_address| _address[0..peek_idenifier_end(_address)],
+        .EndLineComment => |_address| _address[0..peek_end_line_comment(_address)],
+        .Bad => |_address| _address[0..peek_bad_end(_address)],
     };
 }
 
