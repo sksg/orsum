@@ -11,7 +11,8 @@ pub fn InstructionSetInfo(_InstructionSet: type) type {
         pub fn dummy_operands(comptime operation: OperationType) Self.OperandType(operation) {
             var dummy_value: Self.OperandType(operation) = undefined;
             inline for (@typeInfo(Self.OperandType(operation)).Struct.fields) |field| {
-                @field(dummy_value, field.name) = @intCast((std.math.pow(u128, 2, @bitSizeOf(field.type))) - 1);
+                const backing_type = @typeInfo(field.type).Struct.fields[0].type;
+                @field(dummy_value, field.name) = .{ .index = @intCast((std.math.pow(u128, 2, @bitSizeOf(backing_type))) - 1) };
             }
             return dummy_value;
         }
@@ -377,20 +378,22 @@ pub fn InstructionDisasembler(_InstructionSet: type, _Fmt: InstructionDisasemble
         pub fn fmt_operand_field_len(comptime operation: OperationType, comptime operand_index: usize, comptime has_value: bool) usize {
             const field = @typeInfo(OperandType(operation)).Struct.fields[operand_index];
             if (has_value) {
-                const value = @field(Info.dummy_operands(operation), field.name);
+                const value = @field(Info.dummy_operands(operation), field.name).index;
                 return std.fmt.count(Fmt.operand_value, .{ .operand_value = value });
             } else {
-                return std.fmt.count(Fmt.operand_field, .{ .operand_name = field.name, .operand_type = @typeName(field.type) });
+                const backing_type = @typeInfo(field.type).Struct.fields[0].type;
+                return std.fmt.count(Fmt.operand_field, .{ .operand_name = field.name, .operand_type = @typeName(backing_type) });
             }
         }
 
         pub fn fmt_operand_field(comptime operation: OperationType, comptime operand_index: usize, operands: anytype, buffer: *[fmt_operand_field_len(operation, operand_index, is_value_type(@TypeOf(operands)))]u8) []u8 {
             const field = @typeInfo(OperandType(operation)).Struct.fields[operand_index];
             if (is_value(operands)) {
-                const value = @field(operands, field.name);
+                const value = @field(operands, field.name).index;
                 return std.fmt.bufPrint(buffer, Fmt.operand_value, .{ .operand_value = value }) catch unreachable;
             } else {
-                return std.fmt.bufPrint(buffer, Fmt.operand_field, .{ .operand_name = field.name, .operand_type = @typeName(field.type) }) catch unreachable;
+                const backing_type = @typeInfo(field.type).Struct.fields[0].type;
+                return std.fmt.bufPrint(buffer, Fmt.operand_field, .{ .operand_name = field.name, .operand_type = @typeName(backing_type) }) catch unreachable;
             }
         }
     };
