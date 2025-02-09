@@ -3,61 +3,85 @@ const ir = @import("intermediate_representation.zig");
 const values = @import("values.zig");
 const disasemble = @import("disasemble.zig");
 
-const InstructionSet = union(enum(u8)) {
+pub const InstructionSet = union(enum(u8)) {
     const Self = @This();
     pub const __note = "Register-stack based virtual machine instruction set";
 
+    fn RegisterType(comptime backing_type: type) type {
+        return struct { index: backing_type };
+    }
+
+    pub fn register(comptime backing_type: type, index: anytype) RegisterType(backing_type) {
+        return .{ .index = @intCast(index) };
+    }
+
+    fn ConstantType(comptime backing_type: type) type {
+        return struct { index: backing_type };
+    }
+
+    pub fn constant(comptime backing_type: type, index: anytype) ConstantType(backing_type) {
+        return .{ .index = @intCast(index) };
+    }
+
+    fn LiteralType(comptime backing_type: type) type {
+        return struct { index: backing_type };
+    }
+
+    pub fn literal(comptime backing_type: type, index: anytype) LiteralType(backing_type) {
+        return .{ .index = @intCast(index) };
+    }
+
     LoadConstant: struct {
-        source: u8,
-        destination: u8,
+        source: RegisterType(u8),
+        destination: ConstantType(u8),
         pub const __note = "Registers[destination] = Constants[source]";
     },
     LoadConstantLong: struct {
-        source: u24,
-        destination: u24,
+        source: RegisterType(u24),
+        destination: ConstantType(u24),
         pub const __note = "Registers[destination] = Constants[source]";
     },
     Copy: struct {
-        source: u8,
-        destination: u8,
+        source: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = Registers[source]";
     },
 
     Negate: struct {
-        source: u8,
-        destination: u8,
+        source: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = -Registers[source]";
     },
     Add: struct {
-        source_0: u8,
-        source_1: u8,
-        destination: u8,
+        source_0: RegisterType(u8),
+        source_1: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = Registers[source_0] + Registers[source_1]";
     },
     Subtract: struct {
-        source_0: u8,
-        source_1: u8,
-        destination: u8,
+        source_0: RegisterType(u8),
+        source_1: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = Registers[source_0] - Registers[source_1]";
     },
     Multiply: struct {
-        source_0: u8,
-        source_1: u8,
-        destination: u8,
+        source_0: RegisterType(u8),
+        source_1: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = Registers[source_0] * Registers[source_1]";
     },
     Divide: struct {
-        source_0: u8,
-        source_1: u8,
-        destination: u8,
+        source_0: RegisterType(u8),
+        source_1: RegisterType(u8),
+        destination: RegisterType(u8),
         pub const __note = "Registers[destination] = Registers[source_0] / Registers[source_1]";
     },
     Print: struct {
-        source: u8,
+        source: RegisterType(u8),
         pub const __note = "Print(Registers[source])";
     },
     ExitVirtualMachine: struct {
-        exit_code: u8,
+        exit_code: LiteralType(u8),
         pub const __note = "Exit(exit_code)";
     },
 };
@@ -120,43 +144,43 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
                 switch (operation) {
                     .LoadConstant => {
                         const operands = chunk.read_operands(.LoadConstant, &instruction_cursor);
-                        registers[operands.destination] = chunk.constants.items[operands.source];
+                        registers[operands.destination.index] = chunk.constants.items[operands.source.index];
                     },
                     .LoadConstantLong => {
                         const operands = chunk.read_operands(.LoadConstantLong, &instruction_cursor);
-                        registers[operands.destination] = chunk.constants.items[operands.source];
+                        registers[operands.destination.index] = chunk.constants.items[operands.source.index];
                     },
                     .Copy => {
                         const operands = chunk.read_operands(.Copy, &instruction_cursor);
-                        registers[operands.destination] = registers[operands.source];
+                        registers[operands.destination.index] = registers[operands.source.index];
                     },
                     .Negate => {
                         const operands = chunk.read_operands(.Negate, &instruction_cursor);
-                        registers[operands.destination] = registers[operands.source].negate();
+                        registers[operands.destination.index] = registers[operands.source.index].negate();
                     },
                     .Add => {
                         const operands = chunk.read_operands(.Add, &instruction_cursor);
-                        registers[operands.destination] = try registers[operands.source_0].add(registers[operands.source_1]);
+                        registers[operands.destination.index] = try registers[operands.source_0.index].add(registers[operands.source_1.index]);
                     },
                     .Subtract => {
                         const operands = chunk.read_operands(.Subtract, &instruction_cursor);
-                        registers[operands.destination] = try registers[operands.source_0].subtract(registers[operands.source_1]);
+                        registers[operands.destination.index] = try registers[operands.source_0.index].subtract(registers[operands.source_1.index]);
                     },
                     .Multiply => {
                         const operands = chunk.read_operands(.Multiply, &instruction_cursor);
-                        registers[operands.destination] = try registers[operands.source_0].multiply(registers[operands.source_1]);
+                        registers[operands.destination.index] = try registers[operands.source_0.index].multiply(registers[operands.source_1.index]);
                     },
                     .Divide => {
                         const operands = chunk.read_operands(.Divide, &instruction_cursor);
-                        registers[operands.destination] = try registers[operands.source_0].divide(registers[operands.source_1]);
+                        registers[operands.destination.index] = try registers[operands.source_0.index].divide(registers[operands.source_1.index]);
                     },
                     .Print => {
                         const operands = chunk.read_operands(.Print, &instruction_cursor);
-                        std.debug.print("{}\n", .{registers[operands.source]});
+                        std.debug.print("{}\n", .{registers[operands.source.index]});
                     },
                     .ExitVirtualMachine => {
                         const operands = chunk.read_operands(.ExitVirtualMachine, &instruction_cursor);
-                        return operands.exit_code;
+                        return operands.exit_code.index;
                     },
                 }
             }
