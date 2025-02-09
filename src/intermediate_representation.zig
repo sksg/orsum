@@ -43,7 +43,7 @@ pub fn Chunk(_InstructionSet: type, _ValueType: type, _AddressType: type) type {
             if (address) |addr| try self.debug_info.append(addr);
 
             inline for (@typeInfo(@TypeOf(operands)).Struct.fields) |field| {
-                const operand = @field(operands, field.name);
+                const operand = @field(operands, field.name).index;
                 if (@bitSizeOf(@TypeOf(operand)) >= 8)
                     try self.bytecode.append(@intCast((operand >> 0) & 0xFF));
                 if (@bitSizeOf(@TypeOf(operand)) >= 16)
@@ -115,7 +115,8 @@ pub fn Chunk(_InstructionSet: type, _ValueType: type, _AddressType: type) type {
         pub fn read_operands(self: Self, comptime operation: OperationType, cursor: *usize) OperandType(operation) {
             var operands: OperandType(operation) = undefined;
             inline for (@typeInfo(OperandType(operation)).Struct.fields) |field| {
-                @field(operands, field.name) = self.read_operand(field.type, cursor);
+                const backing_type = @typeInfo(field.type).Struct.fields[0].type;
+                @field(operands, field.name) = .{ .index = self.read_operand(backing_type, cursor) };
             }
             return operands;
         }
