@@ -2,9 +2,10 @@ const std = @import("std");
 const tokens = @import("tokens.zig");
 const vm = @import("virtual_machine.zig");
 
-const TokenType = tokens.TokenType;
+pub const Token = tokens.Token;
+pub const Tokenizer = tokens.Tokenizer;
 
-pub const Parser = struct {
+pub const RecursiveDecentParser = struct {
     const Self = @This();
     const TokenBufferSize = 1024;
     tokenizer: *tokens.Tokenizer,
@@ -26,8 +27,8 @@ pub const Parser = struct {
             try self.terminate_expression();
         }
         try chunk.append_instruction(self.current_address(), .Copy, .{
-            .source = @intCast(last_expression_register),
-            .destination = @intCast(return_register),
+            .source = vm.InstructionSet.register(u8, last_expression_register),
+            .destination = vm.InstructionSet.register(u8, return_register),
         });
         return return_register;
     }
@@ -56,9 +57,9 @@ pub const Parser = struct {
                 const source_1 = try self.multiply_divide(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Add, .{
-                    .source_0 = @intCast(source_0),
-                    .source_1 = @intCast(source_1),
-                    .destination = @intCast(destination),
+                    .source_0 = vm.InstructionSet.register(u8, source_0),
+                    .source_1 = vm.InstructionSet.register(u8, source_1),
+                    .destination = vm.InstructionSet.register(u8, destination),
                 });
                 source_0 = @intCast(destination);
             } else if (self.match(.Minus)) {
@@ -68,9 +69,9 @@ pub const Parser = struct {
                 const source_1 = try self.multiply_divide(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Subtract, .{
-                    .source_0 = @intCast(source_0),
-                    .source_1 = @intCast(source_1),
-                    .destination = @intCast(destination),
+                    .source_0 = vm.InstructionSet.register(u8, source_0),
+                    .source_1 = vm.InstructionSet.register(u8, source_1),
+                    .destination = vm.InstructionSet.register(u8, destination),
                 });
                 source_0 = @intCast(destination);
             } else break;
@@ -91,9 +92,9 @@ pub const Parser = struct {
                 const source_1 = try self.negate(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Add, .{
-                    .source_0 = @intCast(source_0),
-                    .source_1 = @intCast(source_1),
-                    .destination = @intCast(destination),
+                    .source_0 = vm.InstructionSet.register(u8, source_0),
+                    .source_1 = vm.InstructionSet.register(u8, source_1),
+                    .destination = vm.InstructionSet.register(u8, destination),
                 });
                 std.debug.print("consumed '*'...\n", .{});
                 source_0 = @intCast(destination);
@@ -104,9 +105,9 @@ pub const Parser = struct {
                 const source_1 = try self.negate(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Subtract, .{
-                    .source_0 = @intCast(source_0),
-                    .source_1 = @intCast(source_1),
-                    .destination = @intCast(destination),
+                    .source_0 = vm.InstructionSet.register(u8, source_0),
+                    .source_1 = vm.InstructionSet.register(u8, source_1),
+                    .destination = vm.InstructionSet.register(u8, destination),
                 });
                 std.debug.print("consumed '/'...\n", .{});
                 source_0 = @intCast(destination);
@@ -118,14 +119,14 @@ pub const Parser = struct {
 
     fn negate(self: *Self, chunk: *vm.IRChunk) !u32 {
         std.debug.print("try negate...\n", .{});
-        if (self.match(TokenType.Minus)) {
+        if (self.match(Token.Minus)) {
             const address = self.current_address();
             self.advance();
             const source = try self.literal(chunk);
             const destination = chunk.new_register();
             try chunk.append_instruction(address, .Negate, .{
-                .source = @intCast(source),
-                .destination = @intCast(destination),
+                .source = vm.InstructionSet.register(u8, source),
+                .destination = vm.InstructionSet.register(u8, destination),
             });
             self.advance();
             return @intCast(destination);
@@ -139,8 +140,8 @@ pub const Parser = struct {
             const destination = chunk.new_register();
             const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, tokens.token_lexeme(self.current_token()), 0) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                .source = @intCast(source),
-                .destination = @intCast(destination),
+                .source = vm.InstructionSet.register(u8, source),
+                .destination = vm.InstructionSet.constant(u8, destination),
             });
             self.advance();
             return @intCast(destination);
@@ -148,8 +149,8 @@ pub const Parser = struct {
             const destination = chunk.new_register();
             const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, tokens.token_lexeme(self.current_token())) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                .source = @intCast(source),
-                .destination = @intCast(destination),
+                .source = vm.InstructionSet.register(u8, source),
+                .destination = vm.InstructionSet.constant(u8, destination),
             });
             self.advance();
             return @intCast(destination);
@@ -169,11 +170,11 @@ pub const Parser = struct {
         return false;
     }
 
-    fn match(self: *Self, token_type: TokenType) bool {
+    fn match(self: *Self, tag: Token.Tag) bool {
         if (self.at_end())
             return false;
 
-        return self.current_token().token_type == token_type;
+        return self.current_token() == tag;
     }
 
     fn advance(self: *Self) void {
@@ -182,7 +183,7 @@ pub const Parser = struct {
     }
 
     fn consume_newlines(self: *Self) void {
-        while (!self.at_end() and self.current_token().token_type == .Newline) {
+        while (!self.at_end() and self.current_token() == .Newline) {
             self.advance();
         }
     }
@@ -192,6 +193,6 @@ pub const Parser = struct {
     }
 
     fn current_address(self: *Self) [*]const u8 {
-        return self.current_token().lexeme_address;
+        return self.current_token().address();
     }
 };
