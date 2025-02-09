@@ -1,5 +1,4 @@
 const std = @import("std");
-const tokens = @import("tokens.zig");
 const syntax = @import("syntax.zig");
 const virtual_machine = @import("virtual_machine.zig");
 
@@ -23,9 +22,9 @@ fn repl(allocator: std.mem.Allocator) !void {
         const maybe_input = try stdin.readUntilDelimiterOrEofAlloc(allocator, '\n', max_line_size);
         if (maybe_input) |input| {
             defer allocator.free(input);
-            var tokenizer = tokens.Tokenizer.init(input);
+            var tokenizer = syntax.Tokenizer.init(input);
             while (tokenizer.peek() != 0) {
-                var buffer: [1024]tokens.Token = undefined;
+                var buffer: [1024]syntax.Token = undefined;
                 const token_count = tokenizer.read_into_buffer(&buffer);
                 for (buffer[0..token_count]) |token| {
                     std.debug.print("{}\n", .{token});
@@ -43,13 +42,13 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     const input_buffer = try file.readToEndAlloc(allocator, max_file_size);
     defer allocator.free(input_buffer);
 
-    var tokenizer = tokens.Tokenizer.init(input_buffer);
+    var tokenizer = syntax.Tokenizer.init(input_buffer);
     var chunk = virtual_machine.IRChunk.init(allocator);
-    var parser = syntax.Parser.init(&tokenizer);
+    var parser = syntax.RecursiveDecentParser.init(&tokenizer);
     const return_register = try parser.parse(&chunk);
     std.debug.print("return_register = {}\n", .{return_register});
 
-    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = @intCast(return_register) });
+    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = virtual_machine.InstructionSet.register(u8, return_register) });
 
     var vm = virtual_machine.VirtualMachine(true).init(allocator);
     defer vm.deinit();
