@@ -1,6 +1,6 @@
 const std = @import("std");
 const tokens = @import("tokens.zig");
-const vm = @import("virtual_machine.zig");
+const ir = @import("intermediate_representation.zig");
 
 pub const Token = tokens.Token;
 pub const Tokenizer = tokens.Tokenizer;
@@ -17,7 +17,7 @@ pub const RecursiveDecentParser = struct {
         return Self{ .tokenizer = tokenizer, .tokens = undefined, .token_count = 0 };
     }
 
-    pub fn parse(self: *Self, chunk: *vm.IRChunk) !u32 {
+    pub fn parse(self: *Self, chunk: *ir.Chunk) !u32 {
         std.debug.print("start parsing...\n", .{});
         const return_register: u32 = @intCast(chunk.new_register());
         var last_expression_register: u32 = undefined;
@@ -27,8 +27,8 @@ pub const RecursiveDecentParser = struct {
             try self.terminate_expression();
         }
         try chunk.append_instruction(self.current_address(), .Copy, .{
-            .source = vm.InstructionSet.register(u8, last_expression_register),
-            .destination = vm.InstructionSet.register(u8, return_register),
+            .source = ir.register(u8, last_expression_register),
+            .destination = ir.register(u8, return_register),
         });
         return return_register;
     }
@@ -40,12 +40,12 @@ pub const RecursiveDecentParser = struct {
             return error.ExpressionNotTerminated;
     }
 
-    fn expression(self: *Self, chunk: *vm.IRChunk) !u32 {
+    fn expression(self: *Self, chunk: *ir.Chunk) !u32 {
         std.debug.print("try expression...\n", .{});
         return self.add_subtract(chunk);
     }
 
-    fn add_subtract(self: *Self, chunk: *vm.IRChunk) !u32 {
+    fn add_subtract(self: *Self, chunk: *ir.Chunk) !u32 {
         var source_0 = try self.multiply_divide(chunk);
 
         std.debug.print("try add_subtract...\n", .{});
@@ -57,9 +57,9 @@ pub const RecursiveDecentParser = struct {
                 const source_1 = try self.multiply_divide(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Add, .{
-                    .source_0 = vm.InstructionSet.register(u8, source_0),
-                    .source_1 = vm.InstructionSet.register(u8, source_1),
-                    .destination = vm.InstructionSet.register(u8, destination),
+                    .source_0 = ir.register(u8, source_0),
+                    .source_1 = ir.register(u8, source_1),
+                    .destination = ir.register(u8, destination),
                 });
                 source_0 = @intCast(destination);
             } else if (self.match(.Minus)) {
@@ -69,9 +69,9 @@ pub const RecursiveDecentParser = struct {
                 const source_1 = try self.multiply_divide(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Subtract, .{
-                    .source_0 = vm.InstructionSet.register(u8, source_0),
-                    .source_1 = vm.InstructionSet.register(u8, source_1),
-                    .destination = vm.InstructionSet.register(u8, destination),
+                    .source_0 = ir.register(u8, source_0),
+                    .source_1 = ir.register(u8, source_1),
+                    .destination = ir.register(u8, destination),
                 });
                 source_0 = @intCast(destination);
             } else break;
@@ -80,7 +80,7 @@ pub const RecursiveDecentParser = struct {
         return source_0;
     }
 
-    fn multiply_divide(self: *Self, chunk: *vm.IRChunk) !u32 {
+    fn multiply_divide(self: *Self, chunk: *ir.Chunk) !u32 {
         var source_0 = try self.negate(chunk);
 
         std.debug.print("try multiply_divide...\n", .{});
@@ -92,9 +92,9 @@ pub const RecursiveDecentParser = struct {
                 const source_1 = try self.negate(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Add, .{
-                    .source_0 = vm.InstructionSet.register(u8, source_0),
-                    .source_1 = vm.InstructionSet.register(u8, source_1),
-                    .destination = vm.InstructionSet.register(u8, destination),
+                    .source_0 = ir.register(u8, source_0),
+                    .source_1 = ir.register(u8, source_1),
+                    .destination = ir.register(u8, destination),
                 });
                 std.debug.print("consumed '*'...\n", .{});
                 source_0 = @intCast(destination);
@@ -105,9 +105,9 @@ pub const RecursiveDecentParser = struct {
                 const source_1 = try self.negate(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Subtract, .{
-                    .source_0 = vm.InstructionSet.register(u8, source_0),
-                    .source_1 = vm.InstructionSet.register(u8, source_1),
-                    .destination = vm.InstructionSet.register(u8, destination),
+                    .source_0 = ir.register(u8, source_0),
+                    .source_1 = ir.register(u8, source_1),
+                    .destination = ir.register(u8, destination),
                 });
                 std.debug.print("consumed '/'...\n", .{});
                 source_0 = @intCast(destination);
@@ -117,7 +117,7 @@ pub const RecursiveDecentParser = struct {
         return source_0;
     }
 
-    fn negate(self: *Self, chunk: *vm.IRChunk) !u32 {
+    fn negate(self: *Self, chunk: *ir.Chunk) !u32 {
         std.debug.print("try negate...\n", .{});
         if (self.match(Token.Minus)) {
             const address = self.current_address();
@@ -125,8 +125,8 @@ pub const RecursiveDecentParser = struct {
             const source = try self.literal(chunk);
             const destination = chunk.new_register();
             try chunk.append_instruction(address, .Negate, .{
-                .source = vm.InstructionSet.register(u8, source),
-                .destination = vm.InstructionSet.register(u8, destination),
+                .source = ir.register(u8, source),
+                .destination = ir.register(u8, destination),
             });
             self.advance();
             return @intCast(destination);
@@ -134,14 +134,14 @@ pub const RecursiveDecentParser = struct {
         return try self.literal(chunk);
     }
 
-    fn literal(self: *Self, chunk: *vm.IRChunk) !u32 {
+    fn literal(self: *Self, chunk: *ir.Chunk) !u32 {
         std.debug.print("try literal...\n", .{});
         if (self.match(.IntegerLiteral)) {
             const destination = chunk.new_register();
             const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, tokens.token_lexeme(self.current_token()), 0) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                .source = vm.InstructionSet.register(u8, source),
-                .destination = vm.InstructionSet.constant(u8, destination),
+                .source = ir.register(u8, source),
+                .destination = ir.constant(u8, destination),
             });
             self.advance();
             return @intCast(destination);
@@ -149,8 +149,8 @@ pub const RecursiveDecentParser = struct {
             const destination = chunk.new_register();
             const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, tokens.token_lexeme(self.current_token())) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                .source = vm.InstructionSet.register(u8, source),
-                .destination = vm.InstructionSet.constant(u8, destination),
+                .source = ir.register(u8, source),
+                .destination = ir.constant(u8, destination),
             });
             self.advance();
             return @intCast(destination);

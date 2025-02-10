@@ -1,5 +1,6 @@
 const std = @import("std");
 const syntax = @import("syntax.zig");
+const ir = @import("intermediate_representation.zig");
 const virtual_machine = @import("virtual_machine.zig");
 
 // See POSIX exit codes at https://man.freebsd.org/cgi/man.cgi?query=sysexits&apropos=0&sektion=0&manpath=FreeBSD+4.3-RELEASE&format=html
@@ -43,12 +44,12 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     defer allocator.free(input_buffer);
 
     var tokenizer = syntax.Tokenizer.init(input_buffer);
-    var chunk = virtual_machine.IRChunk.init(allocator);
+    var chunk = ir.Chunk.init(allocator);
     var parser = syntax.RecursiveDecentParser.init(&tokenizer);
     const return_register = try parser.parse(&chunk);
     std.debug.print("return_register = {}\n", .{return_register});
 
-    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = virtual_machine.InstructionSet.register(u8, return_register) });
+    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = ir.register(u8, return_register) });
 
     var vm = virtual_machine.VirtualMachine(true).init(allocator);
     defer vm.deinit();

@@ -1,190 +1,89 @@
 const std = @import("std");
 
-pub fn Chunk(_InstructionSet: type, _ValueType: type, _AddressType: type) type {
-    return struct {
-        const Self = @This();
-        pub const InstructionSet = _InstructionSet;
-        pub const OperationType = std.meta.Tag(_InstructionSet);
-        pub fn OperandType(comptime operation: OperationType) type {
-            return @TypeOf(@field(@unionInit(InstructionSet, @tagName(operation), undefined), @tagName(operation)));
-        }
-        pub const ValueType = _ValueType;
-        pub const AddressType = _AddressType;
+pub const Value = @import("values.zig").Value;
+pub const Address = @import("tokens.zig").Token.Address;
+pub const Chunk = @import("chunks.zig").Chunk(@This());
 
-        bytecode: std.ArrayList(u8),
-        constants: std.ArrayList(ValueType),
-        register_count: usize,
-        debug_info: RunLengthEncodedArrayList(AddressType),
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return Self{
-                .bytecode = std.ArrayList(u8).init(allocator),
-                .constants = std.ArrayList(ValueType).init(allocator),
-                .register_count = 0,
-                .debug_info = RunLengthEncodedArrayList(AddressType).init(allocator),
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.bytecode.deinit();
-            self.constants.deinit();
-            self.debug_info.deinit();
-        }
-
-        pub fn new_register(self: *Self) usize {
-            const register = self.register_count;
-            self.register_count += 1;
-            return register;
-        }
-
-        pub fn append_instruction(self: *Self, address: ?AddressType, comptime operation: OperationType, operands: Self.OperandType(operation)) !void {
-            // A single operation is just appended
-            try self.bytecode.append(@intFromEnum(operation));
-            if (address) |addr| try self.debug_info.append(addr);
-
-            inline for (@typeInfo(@TypeOf(operands)).Struct.fields) |field| {
-                const operand = @field(operands, field.name).index;
-                if (@bitSizeOf(@TypeOf(operand)) >= 8)
-                    try self.bytecode.append(@intCast((operand >> 0) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 16)
-                    try self.bytecode.append(@intCast((operand >> 8) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 24)
-                    try self.bytecode.append(@intCast((operand >> 16) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 32)
-                    try self.bytecode.append(@intCast((operand >> 24) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 40)
-                    try self.bytecode.append(@intCast((operand >> 32) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 48)
-                    try self.bytecode.append(@intCast((operand >> 40) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 56)
-                    try self.bytecode.append(@intCast((operand >> 48) & 0xFF));
-                if (@bitSizeOf(@TypeOf(operand)) >= 64)
-                    try self.bytecode.append(@intCast((operand >> 56) & 0xFF));
-            }
-        }
-
-        pub fn append_constant(self: *Self, constant: ValueType) !u32 {
-            try self.constants.append(constant);
-            return @intCast(self.constants.items.len - 1);
-        }
-
-        pub fn read_operation(self: Self, cursor: *usize) OperationType {
-            const operation: OperationType = @enumFromInt(self.bytecode.items[cursor.*]);
-            cursor.* += 1;
-            return operation;
-        }
-
-        pub fn read_operand(self: Self, comptime operand_type: type, cursor: *usize) operand_type {
-            var operand: operand_type = undefined;
-            if (@bitSizeOf(operand_type) >= 8) {
-                operand = @as(operand_type, self.bytecode.items[cursor.*]) << 0;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 16) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 8;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 24) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 16;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 32) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 24;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 40) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 32;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 48) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 40;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 56) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 48;
-                cursor.* += 1;
-            }
-            if (@bitSizeOf(operand_type) >= 64) {
-                operand += @as(operand_type, self.bytecode.items[cursor.*]) << 56;
-                cursor.* += 1;
-            }
-
-            return operand;
-        }
-
-        pub fn read_operands(self: Self, comptime operation: OperationType, cursor: *usize) OperandType(operation) {
-            var operands: OperandType(operation) = undefined;
-            inline for (@typeInfo(OperandType(operation)).Struct.fields) |field| {
-                const backing_type = @typeInfo(field.type).Struct.fields[0].type;
-                @field(operands, field.name) = .{ .index = self.read_operand(backing_type, cursor) };
-            }
-            return operands;
-        }
-
-        pub fn read_instruction(self: Self, cursor: *usize) InstructionSet {
-            const operation = self.read_operation(cursor);
-            switch (operation) {
-                inline else => |op| {
-                    var operands: OperandType(op) = undefined;
-                    inline for (@typeInfo(OperandType(op)).Struct.fields) |field| {
-                        @field(operands, field.name) = self.read_operand(field.type, cursor);
-                    }
-                    return @unionInit(InstructionSet, @tagName(op), operands);
-                },
-            }
-        }
-
-        pub fn unpack_into_instruction_list(self: Self, instruction_list: *std.ArrayList(InstructionSet)) !void {
-            var cursor: usize = 0;
-            while (cursor < self.bytecode.items.len) {
-                try instruction_list.append(self.read_instruction(&cursor));
-            }
-        }
-    };
+fn Register(comptime backing_type: type) type {
+    return struct { index: backing_type };
 }
 
-fn RunLengthEncodedArrayList(T: type) type {
-    return struct {
-        encoded_data: std.ArrayList(entry_type), // Run-length encoding
-
-        const item_type = T;
-        const entry_type = struct { item: item_type, count: usize };
-        const Self = RunLengthEncodedArrayList(item_type);
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return Self{
-                .encoded_data = std.ArrayList(entry_type).init(allocator),
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.encoded_data.deinit();
-        }
-
-        pub fn append(self: *Self, item: item_type) !void {
-            // Test current item to see if it is the same as this new one
-            if (self.encoded_data.items.len > 0) {
-                var current = &self.encoded_data.items[self.encoded_data.items.len - 1];
-                if (current.item == item) {
-                    // If it is the same, increment the length
-                    current.count += 1;
-                    return;
-                }
-            }
-
-            // Else we need to append a new address
-            try self.encoded_data.append(.{ .item = item, .count = 1 });
-        }
-
-        pub fn read_at(self: *const Self, item_index: usize) item_type {
-            var count: usize = 0;
-            for (self.encoded_data.items) |entry| {
-                count += entry.count;
-                if (count > item_index)
-                    return entry.item;
-            }
-
-            unreachable;
-        }
-    };
+fn Constant(comptime backing_type: type) type {
+    return struct { index: backing_type };
 }
+
+fn Literal(comptime backing_type: type) type {
+    return struct { index: backing_type };
+}
+
+pub fn register(comptime backing_type: type, index: anytype) Register(backing_type) {
+    return .{ .index = @intCast(index) };
+}
+
+pub fn constant(comptime backing_type: type, index: anytype) Constant(backing_type) {
+    return .{ .index = @intCast(index) };
+}
+
+pub fn literal(comptime backing_type: type, index: anytype) Literal(backing_type) {
+    return .{ .index = @intCast(index) };
+}
+
+pub const Instruction = union(enum(u8)) {
+    const Self = @This();
+    pub const Tag = std.meta.Tag(Self);
+    pub const __note = "Register-stack based virtual machine instruction set";
+
+    LoadConstant: struct {
+        source: Register(u8),
+        destination: Constant(u8),
+        pub const __note = "Registers[destination] = Constants[source]";
+    },
+    LoadConstantLong: struct {
+        source: Register(u24),
+        destination: Constant(u24),
+        pub const __note = "Registers[destination] = Constants[source]";
+    },
+    Copy: struct {
+        source: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = Registers[source]";
+    },
+
+    Negate: struct {
+        source: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = -Registers[source]";
+    },
+    Add: struct {
+        source_0: Register(u8),
+        source_1: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = Registers[source_0] + Registers[source_1]";
+    },
+    Subtract: struct {
+        source_0: Register(u8),
+        source_1: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = Registers[source_0] - Registers[source_1]";
+    },
+    Multiply: struct {
+        source_0: Register(u8),
+        source_1: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = Registers[source_0] * Registers[source_1]";
+    },
+    Divide: struct {
+        source_0: Register(u8),
+        source_1: Register(u8),
+        destination: Register(u8),
+        pub const __note = "Registers[destination] = Registers[source_0] / Registers[source_1]";
+    },
+    Print: struct {
+        source: Register(u8),
+        pub const __note = "Print(Registers[source])";
+    },
+    ExitVirtualMachine: struct {
+        exit_code: Literal(u8),
+        pub const __note = "Exit(exit_code)";
+    },
+};

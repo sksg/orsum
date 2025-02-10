@@ -1,111 +1,22 @@
 const std = @import("std");
 const ir = @import("intermediate_representation.zig");
-const values = @import("values.zig");
 const disasemble = @import("disasemble.zig");
-
-pub const InstructionSet = union(enum(u8)) {
-    const Self = @This();
-    pub const __note = "Register-stack based virtual machine instruction set";
-
-    fn RegisterType(comptime backing_type: type) type {
-        return struct { index: backing_type };
-    }
-
-    pub fn register(comptime backing_type: type, index: anytype) RegisterType(backing_type) {
-        return .{ .index = @intCast(index) };
-    }
-
-    fn ConstantType(comptime backing_type: type) type {
-        return struct { index: backing_type };
-    }
-
-    pub fn constant(comptime backing_type: type, index: anytype) ConstantType(backing_type) {
-        return .{ .index = @intCast(index) };
-    }
-
-    fn LiteralType(comptime backing_type: type) type {
-        return struct { index: backing_type };
-    }
-
-    pub fn literal(comptime backing_type: type, index: anytype) LiteralType(backing_type) {
-        return .{ .index = @intCast(index) };
-    }
-
-    LoadConstant: struct {
-        source: RegisterType(u8),
-        destination: ConstantType(u8),
-        pub const __note = "Registers[destination] = Constants[source]";
-    },
-    LoadConstantLong: struct {
-        source: RegisterType(u24),
-        destination: ConstantType(u24),
-        pub const __note = "Registers[destination] = Constants[source]";
-    },
-    Copy: struct {
-        source: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = Registers[source]";
-    },
-
-    Negate: struct {
-        source: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = -Registers[source]";
-    },
-    Add: struct {
-        source_0: RegisterType(u8),
-        source_1: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = Registers[source_0] + Registers[source_1]";
-    },
-    Subtract: struct {
-        source_0: RegisterType(u8),
-        source_1: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = Registers[source_0] - Registers[source_1]";
-    },
-    Multiply: struct {
-        source_0: RegisterType(u8),
-        source_1: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = Registers[source_0] * Registers[source_1]";
-    },
-    Divide: struct {
-        source_0: RegisterType(u8),
-        source_1: RegisterType(u8),
-        destination: RegisterType(u8),
-        pub const __note = "Registers[destination] = Registers[source_0] / Registers[source_1]";
-    },
-    Print: struct {
-        source: RegisterType(u8),
-        pub const __note = "Print(Registers[source])";
-    },
-    ExitVirtualMachine: struct {
-        exit_code: LiteralType(u8),
-        pub const __note = "Exit(exit_code)";
-    },
-};
-
-pub const OperationType = std.meta.Tag(InstructionSet);
-pub const ValueType = values.ValueType;
-pub const AddressType = [*]const u8;
-pub const IRChunk = ir.Chunk(InstructionSet, ValueType, AddressType);
 
 pub fn VirtualMachine(comptime debug_mode: bool) type {
     return struct {
         const Self = @This();
         const DebugMode = debug_mode;
-        register_stack: std.ArrayList(ValueType),
+        register_stack: std.ArrayList(ir.Value),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             if (DebugMode) {
-                std.debug.print("Virtual machine based on instruction set {}:\n{s}\n", .{ InstructionSet, disasemble.types_ruler(InstructionSet, "=") });
-                std.debug.print("{s}\n", .{disasemble.instruction_set(InstructionSet)});
-                std.debug.print("{s}\n\n", .{disasemble.types_ruler(InstructionSet, "-")});
+                std.debug.print("Virtual machine based on instruction set {}:\n{s}\n", .{ ir.Instruction, disasemble.types_ruler(ir.Instruction, "=") });
+                std.debug.print("{s}\n", .{disasemble.instruction_set(ir.Instruction)});
+                std.debug.print("{s}\n\n", .{disasemble.types_ruler(ir.Instruction, "-")});
             }
 
             return Self{
-                .register_stack = std.ArrayList(ValueType).init(allocator),
+                .register_stack = std.ArrayList(ir.Value).init(allocator),
             };
         }
 
@@ -113,34 +24,34 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
             self.register_stack.deinit();
         }
 
-        pub fn is_at_end(chunk: *const IRChunk, instruction_cursor: usize) bool {
+        pub fn is_at_end(chunk: *const ir.Chunk, instruction_cursor: usize) bool {
             return instruction_cursor >= chunk.bytecode.items.len;
         }
 
-        pub fn debug_trace_execution(chunk: *const IRChunk, current_cursor: usize) void {
+        pub fn debug_trace_execution(chunk: *const ir.Chunk, current_cursor: usize) void {
             var debug_cursor = current_cursor;
             if (DebugMode) {
-                const operation: OperationType = chunk.read_operation(&debug_cursor);
+                const operation: ir.Instruction.Tag = chunk.read_operation(&debug_cursor);
                 switch (operation) {
                     inline else => |op| {
                         const operands = chunk.read_operands(op, &debug_cursor);
-                        std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, current_cursor, op, operands)});
+                        std.debug.print("{s}\n", .{disasemble.instruction_value(ir.Instruction, current_cursor, op, operands)});
                     },
                 }
             }
         }
 
-        pub fn interpret(self: *Self, chunk: *const IRChunk) !u8 {
+        pub fn interpret(self: *Self, chunk: *const ir.Chunk) !u8 {
             var registers = try self.register_stack.addManyAsSlice(chunk.register_count);
 
             if (DebugMode)
-                std.debug.print("{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
+                std.debug.print("{s}\n", .{disasemble.values_ruler(ir.Instruction, "=")});
             var instruction_cursor: usize = 0;
             while (!is_at_end(chunk, instruction_cursor)) {
                 const current_cursor = instruction_cursor;
                 debug_trace_execution(chunk, current_cursor);
 
-                const operation: OperationType = chunk.read_operation(&instruction_cursor);
+                const operation: ir.Instruction.Tag = chunk.read_operation(&instruction_cursor);
                 switch (operation) {
                     .LoadConstant => {
                         const operands = chunk.read_operands(.LoadConstant, &instruction_cursor);
@@ -192,33 +103,33 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
 test "test virtual machine" {
     const allocator = std.testing.allocator;
 
-    var chunk = IRChunk.init(allocator);
+    var chunk = ir.Chunk.init(allocator);
     defer chunk.deinit();
 
     const constants = .{ try chunk.append_constant(.{ .Integer = 3 }), try chunk.append_constant(.{ .Integer = 4 }) };
-    const register = .{ chunk.new_register(), chunk.new_register(), chunk.new_register() };
+    const registers = .{ chunk.new_register(), chunk.new_register(), chunk.new_register() };
 
-    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[0]), .destination = @intCast(register[0]) });
-    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[1]), .destination = @intCast(register[1]) });
-    try chunk.append_instruction(null, .Multiply, .{ .source_0 = @intCast(register[0]), .source_1 = @intCast(register[1]), .destination = @intCast(register[2]) });
-    try chunk.append_instruction(null, .Print, .{ .source = @intCast(register[2]) });
+    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[0]), .destination = @intCast(registers[0]) });
+    try chunk.append_instruction(null, .LoadConstant, .{ .source = @intCast(constants[1]), .destination = @intCast(registers[1]) });
+    try chunk.append_instruction(null, .Multiply, .{ .source_0 = @intCast(registers[0]), .source_1 = @intCast(registers[1]), .destination = @intCast(registers[2]) });
+    try chunk.append_instruction(null, .Print, .{ .source = @intCast(registers[2]) });
     try chunk.append_instruction(null, .ExitVirtualMachine, .{ .exit_code = 0 });
 
-    var instruction_list = std.ArrayList(InstructionSet).init(allocator);
+    var instruction_list = std.ArrayList(ir.Instruction).init(allocator);
     defer instruction_list.deinit();
 
     try chunk.unpack_into_instruction_list(&instruction_list);
-    std.debug.print("IR \"chunk\" disasembly:\n{s}\n", .{disasemble.values_ruler(InstructionSet, "=")});
+    std.debug.print("IR \"chunk\" disasembly:\n{s}\n", .{disasemble.values_ruler(ir.Instruction, "=")});
     for (instruction_list.items, 0..) |instruction, index| {
-        const operation: std.meta.Tag(InstructionSet) = @enumFromInt(@intFromEnum(instruction));
+        const operation: std.meta.Tag(ir.Instruction) = @enumFromInt(@intFromEnum(instruction));
         switch (operation) {
             inline else => |op| {
                 const operands = @field(instruction, @tagName(op));
-                std.debug.print("{s}\n", .{disasemble.instruction_value(InstructionSet, index, op, operands)});
+                std.debug.print("{s}\n", .{disasemble.instruction_value(ir.Instruction, index, op, operands)});
             },
         }
     }
-    std.debug.print("{s}\n\n", .{disasemble.values_ruler(InstructionSet, "-")});
+    std.debug.print("{s}\n\n", .{disasemble.values_ruler(ir.Instruction, "-")});
 
     var vm = VirtualMachine(true).init(allocator);
     defer vm.deinit();
