@@ -119,7 +119,7 @@ pub const RecursiveDecentParser = struct {
 
     fn negate(self: *Self, chunk: *ir.Chunk) !u32 {
         std.debug.print("try negate...\n", .{});
-        if (self.match(Token.Minus)) {
+        if (self.match(.Minus)) {
             const address = self.current_address();
             self.advance();
             const source = try self.literal(chunk);
@@ -138,7 +138,7 @@ pub const RecursiveDecentParser = struct {
         std.debug.print("try literal...\n", .{});
         if (self.match(.IntegerLiteral)) {
             const destination = chunk.new_register();
-            const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, tokens.token_lexeme(self.current_token()), 0) });
+            const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, self.current_token().lexeme(self.tokenizer.input), 0) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
                 .source = ir.register(u8, source),
                 .destination = ir.constant(u8, destination),
@@ -147,7 +147,7 @@ pub const RecursiveDecentParser = struct {
             return @intCast(destination);
         } else if (self.match(.FloatLiteral)) {
             const destination = chunk.new_register();
-            const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, tokens.token_lexeme(self.current_token())) });
+            const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, self.current_token().lexeme(self.tokenizer.input)) });
             try chunk.append_instruction(self.current_address(), .LoadConstant, .{
                 .source = ir.register(u8, source),
                 .destination = ir.constant(u8, destination),
@@ -174,7 +174,7 @@ pub const RecursiveDecentParser = struct {
         if (self.at_end())
             return false;
 
-        return self.current_token() == tag;
+        return self.current_token().tag == tag;
     }
 
     fn advance(self: *Self) void {
@@ -183,7 +183,7 @@ pub const RecursiveDecentParser = struct {
     }
 
     fn consume_newlines(self: *Self) void {
-        while (!self.at_end() and self.current_token() == .Newline) {
+        while (!self.at_end() and self.current_token().tag == .Newline) {
             self.advance();
         }
     }
@@ -193,6 +193,6 @@ pub const RecursiveDecentParser = struct {
     }
 
     fn current_address(self: *Self) [*]const u8 {
-        return self.current_token().address();
+        return self.current_token().address;
     }
 };

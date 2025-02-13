@@ -1,99 +1,150 @@
 const std = @import("std");
 const testing = @import("testing.zig");
 
-pub const Token = union(enum(u8)) {
+pub const Token = struct {
     const Self = @This();
-    pub const Tag = std.meta.Tag(Token);
     pub const Address = [*]const u8;
+    pub const Source = []const u8;
 
-    // Sentinel values
-    Null: Address,
-    Bad: Address,
-    // Single characters (enum value equal to ASCII value)
-    LeftParen: Address, // = '(',
-    RightParen: Address, // = ')',
-    LeftBrace: Address, // = '{',
-    RightBrace: Address, // = '}',
-    LeftBracket: Address, // = '[',
-    RightBracket: Address, // = ']',
-    Plus: Address, // = '+',
-    Minus: Address, // = '-',
-    Star: Address, // = '*',
-    Slash: Address, // = '/',
-    Dot: Address, // = '.',
-    Comma: Address, // = ',',
-    Colon: Address, // = ':',
-    Semicolon: Address, // = ';',
-    Newline: Address, // = '\n',
-    Bang: Address, // = '!',
-    Lesser: Address, // = '<',
-    Equal: Address, // = '=',
-    Greater: Address, // = '>',
-    Ampersand: Address, // = '&',
-    Bar: Address, // = '|',
-    At: Address, // = '@',
-    ColonEqual: Address, // = (':' + '='),
-    BangEqual: Address, // = ('!' + '='),
-    LesserEqual: Address, // = ('<' + '='),
-    EqualEqual: Address, // = ('=' + '='),
-    GreaterEqual: Address, // = ('>' + '='),
-    PlusEqual: Address, // = ('+' + '='),
-    MinusEqual: Address, // = ('-' + '='),
-    AmpersandEqual: Address, // = ('&' + '='),
-    BarEqual: Address, // = ('|' + '='),
-    PlusPlus: Address, // = ('+' + '+'),
-    MinusMinus: Address, // = ('-' + '-'),
-    AmpersandAmpersand: Address, // = ('&' + '&'),
-    BarBar: Address, // = ('|' + '|'),
-    DotDot: Address, // = ('.' + '.'),
-    DotDotDot: Address, // = ('.' + '.' + '.'),
-    // Literals
-    IntegerLiteral: Address,
-    FloatLiteral: Address,
-    StringLiteral: Address,
-    True: Address,
-    False: Address,
-    EndLineComment: Address,
-    // Keywords
-    Def: Address,
-    Import: Address,
-    From: Address,
-    // Control flow
-    If: Address,
-    Else: Address,
-    For: Address,
-    While: Address,
-    Do: Address,
-    Switch: Address,
-    // Identifers
-    Identifier: Address,
+    pub const Tag = enum {
+        // Sentinel values
+        Null,
+        Bad,
+        // Single characters
+        LeftParen,
+        RightParen,
+        LeftBrace,
+        RightBrace,
+        LeftBracket,
+        RightBracket,
+        Plus,
+        Minus,
+        Star,
+        Slash,
+        Dot,
+        Comma,
+        Colon,
+        Semicolon,
+        Newline,
+        Bang,
+        Lesser,
+        Equal,
+        Greater,
+        Ampersand,
+        Bar,
+        At,
+        ColonEqual,
+        BangEqual,
+        LesserEqual,
+        EqualEqual,
+        GreaterEqual,
+        PlusEqual,
+        MinusEqual,
+        AmpersandEqual,
+        BarEqual,
+        PlusPlus,
+        MinusMinus,
+        AmpersandAmpersand,
+        BarBar,
+        DotDot,
+        DotDotDot,
+        // Literals
+        IntegerLiteral,
+        FloatLiteral,
+        StringLiteral,
+        True,
+        False,
+        EndLineComment,
+        // Keywords
+        Def,
+        Import,
+        From,
+        // Control flow
+        If,
+        Else,
+        For,
+        While,
+        Do,
+        Switch,
+        // Identifers
+        Identifier,
+    };
 
-    pub fn init(comptime _tag: Tag, _address: [*]const u8) Token {
-        return @unionInit(Token, @tagName(_tag), _address);
+    pub usingnamespace Tag;
+
+    tag: Tag,
+    address: Address,
+
+    pub fn init(comptime tag: Tag, address: Address) Token {
+        return Token{ .tag = tag, .address = address };
     }
 
-    pub fn tag(self: Token) Tag {
-        return @enumFromInt(@intFromEnum(self));
-    }
-
-    pub fn address(self: Self) Address {
-        return switch (self) {
-            inline else => |_address| _address,
+    pub fn lexeme(self: Self, input: Source) []const u8 {
+        return switch (self.tag) {
+            // No lexemes
+            .Null => "", // This is the only token without a lexeme (piece of string)
+            // Single characters
+            .Newline, .LeftParen, .LeftBrace, .LeftBracket, .RightParen, .RightBrace, .RightBracket, .Plus, .Minus, .Star, .Slash, .Dot, .Comma, .Colon, .Semicolon, .Bang, .Lesser, .Equal, .Greater, .Ampersand, .Bar, .At => self.address[0..1],
+            // Dual characters
+            .ColonEqual, .BangEqual, .LesserEqual, .EqualEqual, .GreaterEqual, .PlusEqual, .PlusPlus, .MinusMinus, .MinusEqual, .AmpersandEqual, .AmpersandAmpersand, .BarEqual, .BarBar, .If, .Do, .DotDot => self.address[0..2],
+            // Multi-character
+            .Def, .For, .DotDotDot => self.address[0..3],
+            .True, .Else, .From => self.address[0..4],
+            .False, .While => self.address[0..5],
+            .Switch, .Import => self.address[0..6],
+            // Unknown length
+            .IntegerLiteral => self.address[0..peek_integer_literal_end(input, self.address)],
+            .FloatLiteral => self.address[0..peek_float_literal_end(input, self.address)],
+            .StringLiteral => self.address[0..peek_string_literal_end(input, self.address)],
+            .Identifier => self.address[0..peek_idenifier_end(input, self.address)],
+            .EndLineComment => self.address[0..peek_end_line_comment(input, self.address)],
+            .Bad => self.address[0..peek_bad_end(input, self.address)],
         };
     }
 
-    pub fn format(value: Token, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        const lexeme = escape_specials(token_lexeme(value));
-        try writer.print("{s}{{{s}, '{s}'}}", .{ @typeName(Token), @tagName(value.tag()), lexeme });
+    pub const WithDebugInfo = struct {
+        token: Token,
+        input: Token.Source,
+
+        pub fn lexeme(self: WithDebugInfo) []const u8 {
+            return self.token.lexeme(self.input);
+        }
+
+        pub fn format(self: WithDebugInfo, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+            var line_begin = self.token.address;
+            var line_length: usize = 0;
+            while (line_begin != self.input.ptr and (line_begin - 1)[0] != '\n') {
+                line_begin -= 1;
+                line_length += 1;
+            }
+            while (line_begin[line_length] != 0 and line_begin[line_length] != '\n' and line_begin + line_length != self.input.ptr) {
+                line_length += 1;
+            }
+            const line_number = 1 + std.mem.count(u8, self.input[0 .. @intFromPtr(line_begin) - @intFromPtr(self.input.ptr)], "\n");
+            const line_column = 1 + @intFromPtr(self.token.address) - @intFromPtr(line_begin);
+            try writer.print("l{}:c{}:\n", .{ line_number, line_column });
+            try writer.print("{s}\n", .{line_begin[0..line_length]});
+            const token_len = @max(self.lexeme().len, 1);
+            for (0..line_column - 1) |_| {
+                try writer.print(" ", .{});
+            }
+            for (0..token_len) |_| {
+                try writer.print("^", .{});
+            }
+        }
+    };
+
+    pub fn with_debug_info(self: Token, input: Token.Source) WithDebugInfo {
+        return WithDebugInfo{ .token = self, .input = input };
     }
 };
 
 pub const Tokenizer = struct {
-    input: []const u8, // We assume unknown length, zero terminated input strings
+    input: Token.Source,
     cursor: usize,
     current_lexeme_address: [*]const u8,
 
-    pub fn init(input: []const u8) Tokenizer {
+    pub fn init(input: Token.Source) Tokenizer {
         return Tokenizer{
             .input = input,
             .cursor = 0,
@@ -136,6 +187,7 @@ pub const Tokenizer = struct {
             }
         }
 
+        self.current_lexeme_address = self.input.ptr[self.cursor..];
         return self.null_token();
     }
 
@@ -145,7 +197,7 @@ pub const Tokenizer = struct {
             const _token = self.read_token();
             buffer[count] = _token;
             count += 1;
-            if (_token == .Null) {
+            if (_token.tag == .Null) {
                 break;
             }
         }
@@ -203,7 +255,7 @@ pub const Tokenizer = struct {
             '\n' => return Token.init(.Newline, self.current_lexeme_address),
             '@' => return Token.init(.At, self.current_lexeme_address),
             '/' => return Token.init(.Slash, self.current_lexeme_address),
-            '.' => return Token.init(.Do, self.current_lexeme_address),
+            '.' => return Token.init(.Dot, self.current_lexeme_address),
             ':' => return Token.init(.Colon, self.current_lexeme_address),
             '!' => return Token.init(.Bang, self.current_lexeme_address),
             '<' => return Token.init(.Lesser, self.current_lexeme_address),
@@ -228,7 +280,7 @@ pub const Tokenizer = struct {
 
     pub fn identifier(self: *Tokenizer) Token {
         // Here we know that the token must be an identifier, so now we just consume the rest of the identifier
-        while (is_alpha_numeric(self.peek()))
+        while (self.cursor < self.input.len and is_alpha_numeric(self.peek()))
             self.advance_once();
         return Token.init(.Identifier, self.current_lexeme_address);
     }
@@ -313,7 +365,7 @@ fn is_numeric(character: u8) bool {
 }
 
 test "test reading tokens" {
-    const input: []const u8 =
+    const input: [339]u8 =
         \\import std.debug
         \\import os from std
         \\
@@ -335,23 +387,23 @@ test "test reading tokens" {
         \\    f--;
         \\
         \\}  // End of line comments!
-    ;
-    var tokenizer = Tokenizer.init(input);
+    .*;
+    var tokenizer = Tokenizer.init(&input);
     var buffer: [1024]Token = undefined;
     const token_count = tokenizer.read_into_buffer(&buffer);
     for (buffer[0..token_count]) |token| {
-        std.debug.print("{}: {s}\n", .{ token, escape_specials(token_lexeme(token)) });
+        std.debug.print("{}\n", .{token.with_debug_info(&input)});
     }
     var generated: [1024]u8 = undefined;
     var generated_len: usize = 0;
     for (buffer[0..token_count]) |token| {
-        const result = std.fmt.bufPrint(generated[generated_len..], "{s} ", .{token_lexeme(token)}) catch unreachable;
+        const result = std.fmt.bufPrint(generated[generated_len..], "{s} ", .{token.lexeme(&input)}) catch unreachable;
         generated_len += result.len;
-        // std.debug.print("{s} ", .{token_lexeme(token)});
+        // std.debug.print("{s} ", .{token.lexeme()});
     }
     generated[generated_len] = 0; // null terminate
 
-    const generated_input: []const u8 = generated[0..generated_len];
+    const generated_input = generated[0..generated_len :0];
 
     //std.debug.print("{s}\n", .{generated_input});
     //std.debug.print("Token count: {}\n", .{token_count});
@@ -362,11 +414,18 @@ test "test reading tokens" {
 
     try std.testing.expectEqual(token_count, alternative_token_count);
 
-    try testing.expect_equal_slices(Token, tokens_equal, buffer[0..token_count], alternative_buffer[0..token_count]);
+    var debug_buffer: [1024]Token.WithDebugInfo = undefined;
+    var debug_alternative_buffer: [1024]Token.WithDebugInfo = undefined;
+    for (0..token_count) |i| {
+        debug_buffer[i] = buffer[i].with_debug_info(&input);
+        debug_alternative_buffer[i] = alternative_buffer[i].with_debug_info(&input);
+    }
+
+    try testing.expect_equal_slices(Token.WithDebugInfo, tokens_equal, debug_buffer[0..token_count], debug_alternative_buffer[0..token_count]);
 }
 
-fn tokens_equal(left: Token, right: Token) bool {
-    return left == right and strings_equal(token_lexeme(left), token_lexeme(right));
+fn tokens_equal(left: Token.WithDebugInfo, right: Token.WithDebugInfo) bool {
+    return left.token.tag == right.token.tag and strings_equal(left.lexeme(), right.lexeme());
 }
 
 fn strings_equal(left: []const u8, right: []const u8) bool {
@@ -381,32 +440,13 @@ fn escape_specials(string: []const u8) []const u8 {
     return if (strings_equal(string, "\n"[0..1])) "\\n" else if (strings_equal(string, "")) "\\0" else string;
 }
 
-pub fn token_lexeme(token: Token) []const u8 {
-    return switch (token) {
-        // No lexemes
-        .Null => "", // This is the only token without a lexeme (piece of string)
-        // Single characters
-        .Newline, .LeftParen, .LeftBrace, .LeftBracket, .RightParen, .RightBrace, .RightBracket, .Plus, .Minus, .Star, .Slash, .Dot, .Comma, .Colon, .Semicolon, .Bang, .Lesser, .Equal, .Greater, .Ampersand, .Bar, .At => |_address| _address[0..1],
-        // Dual characters
-        .ColonEqual, .BangEqual, .LesserEqual, .EqualEqual, .GreaterEqual, .PlusEqual, .PlusPlus, .MinusMinus, .MinusEqual, .AmpersandEqual, .AmpersandAmpersand, .BarEqual, .BarBar, .If, .Do, .DotDot => |_address| _address[0..2],
-        // Multi-character
-        .Def, .For, .DotDotDot => |_address| _address[0..3],
-        .True, .Else, .From => |_address| _address[0..4],
-        .False, .While => |_address| _address[0..5],
-        .Switch, .Import => |_address| _address[0..6],
-        // Unknown length
-        .IntegerLiteral => |_address| _address[0..peek_integer_literal_end(_address)],
-        .FloatLiteral => |_address| _address[0..peek_float_literal_end(_address)],
-        .StringLiteral => |_address| _address[0..peek_string_literal_end(_address)],
-        .Identifier => |_address| _address[0..peek_idenifier_end(_address)],
-        .EndLineComment => |_address| _address[0..peek_end_line_comment(_address)],
-        .Bad => |_address| _address[0..peek_bad_end(_address)],
-    };
+fn is_end_of(input: Token.Source, address: [*]const u8, cursor: usize) bool {
+    return address + cursor == input.ptr + input.len;
 }
 
-fn peek_bad_end(start_address: [*]const u8) usize {
+fn peek_bad_end(input: Token.Source, start_address: [*]const u8) usize {
     var cursor: usize = 0;
-    while (start_address[cursor] != 0) {
+    while (!is_end_of(input, start_address, cursor) and start_address[cursor] != 0) {
         switch (start_address[cursor]) {
             ' ', '\t', '\n' => return cursor,
             else => cursor += 1,
@@ -415,67 +455,69 @@ fn peek_bad_end(start_address: [*]const u8) usize {
     return cursor;
 }
 
-fn peek_idenifier_end(start_address: [*]const u8) usize {
+fn peek_idenifier_end(input: Token.Source, start_address: [*]const u8) usize {
     var cursor: usize = 0;
-    while (is_alpha_numeric(start_address[cursor])) {
+    while (!is_end_of(input, start_address, cursor) and is_alpha_numeric(start_address[cursor])) {
         cursor += 1;
     }
     return cursor;
 }
 
-fn peek_string_literal_end(start_address: [*]const u8) usize {
+fn peek_string_literal_end(input: Token.Source, start_address: [*]const u8) usize {
     var cursor: usize = 0;
-    cursor += 1;
-    while (start_address[cursor] != '"') {
+    if (!is_end_of(input, start_address, cursor)) // Assuming a beginning quote '"' is present
+        cursor += 1;
+    while (!is_end_of(input, start_address, cursor) and start_address[cursor] != '"') {
         cursor += 1;
     }
-    cursor += 1;
+    if (!is_end_of(input, start_address, cursor)) // Assuming an ending quote '"' is present
+        cursor += 1;
     return cursor;
 }
 
-fn peek_integer_literal_end(start_address: [*]const u8) usize {
+fn peek_integer_literal_end(input: Token.Source, start_address: [*]const u8) usize {
     var cursor: usize = 0;
-    while (is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
+    while (!is_end_of(input, start_address, cursor) and is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
         cursor += 1;
     }
-    if (start_address[cursor] == 'e' or start_address[cursor] == 'E') {
+    if (!is_end_of(input, start_address, cursor) and start_address[cursor] == 'e' or start_address[cursor] == 'E') {
         cursor += 1;
-        if (start_address[cursor] == '+') {
+        if (!is_end_of(input, start_address, cursor) and start_address[cursor] == '+') {
             cursor += 1;
         }
-        while (is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
-            cursor += 1;
-        }
-    }
-    return cursor;
-}
-
-fn peek_float_literal_end(start_address: [*]const u8) usize {
-    var cursor: usize = 0;
-    while (is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
-        cursor += 1;
-    }
-    if (start_address[cursor] == '.') {
-        cursor += 1;
-        while (is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
-            cursor += 1;
-        }
-    }
-    if (start_address[cursor] == 'e' or start_address[cursor] == 'E') {
-        cursor += 1;
-        if (start_address[cursor] == '+' or start_address[cursor] == '-') {
-            cursor += 1;
-        }
-        while (is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
+        while (!is_end_of(input, start_address, cursor) and is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
             cursor += 1;
         }
     }
     return cursor;
 }
 
-fn peek_end_line_comment(start_address: [*]const u8) usize {
+fn peek_float_literal_end(input: Token.Source, start_address: [*]const u8) usize {
     var cursor: usize = 0;
-    while (start_address[cursor] != '\n' and start_address[cursor] != 0) {
+    while (!is_end_of(input, start_address, cursor) and is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
+        cursor += 1;
+    }
+    if (!is_end_of(input, start_address, cursor) and start_address[cursor] == '.') {
+        cursor += 1;
+        while (!is_end_of(input, start_address, cursor) and is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
+            cursor += 1;
+        }
+    }
+    if (!is_end_of(input, start_address, cursor) and start_address[cursor] == 'e' or start_address[cursor] == 'E') {
+        cursor += 1;
+        if (!is_end_of(input, start_address, cursor) and start_address[cursor] == '+' or start_address[cursor] == '-') {
+            cursor += 1;
+        }
+        while (!is_end_of(input, start_address, cursor) and is_numeric(start_address[cursor]) or start_address[cursor] == '_') {
+            cursor += 1;
+        }
+    }
+    return cursor;
+}
+
+fn peek_end_line_comment(input: Token.Source, start_address: [*]const u8) usize {
+    var cursor: usize = 0;
+    while (!is_end_of(input, start_address, cursor) and start_address[cursor] != '\n' and start_address[cursor] != 0) {
         cursor += 1;
     }
     // Strip trailing whitespace
