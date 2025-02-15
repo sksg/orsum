@@ -23,7 +23,7 @@ fn repl(allocator: std.mem.Allocator) !void {
         const maybe_input = try stdin.readUntilDelimiterOrEofAlloc(allocator, '\n', max_line_size);
         if (maybe_input) |input| {
             defer allocator.free(input);
-            var tokenizer = syntax.Tokenizer.init(input);
+            var tokenizer = syntax.Tokenizer(.NoTokenizeTrace).init(input);
             while (tokenizer.peek() != 0) {
                 var buffer: [1024]syntax.Token = undefined;
                 const token_count = tokenizer.read_into_buffer(&buffer);
@@ -43,9 +43,9 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     const input_buffer = try file.readToEndAlloc(allocator, max_file_size);
     defer allocator.free(input_buffer);
 
-    var tokenizer = syntax.Tokenizer.init(input_buffer);
+    var tokenizer = syntax.Tokenizer(.NoTokenizeTrace).init(input_buffer);
     var chunk = ir.Chunk.init(allocator);
-    var parser = syntax.RecursiveDecentParser.init(&tokenizer);
+    var parser = syntax.RecursiveDecentParser(.NoTokenizeTrace).init(&tokenizer);
     const return_register = try parser.parse(&chunk);
     std.debug.print("return_register = {}\n", .{return_register});
 
