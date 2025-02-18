@@ -26,4 +26,4 @@ jobs:
 
       - name: Build the project
         run: |
-          zig build run
+          zig build run -- test_source.os
