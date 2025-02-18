@@ -4,9 +4,9 @@ const ir = @import("intermediate_representation.zig");
 
 pub const Token = tokens.Token;
 pub const Tokenizer = tokens.Tokenizer;
-pub const TokenizerDebugMode = tokens.TokenizerDebugMode;
+pub const TokenizerTracingMode = tokens.TokenizerTracingMode;
 
-pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
+pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
     return struct {
         const Self = @This();
         const TokenBufferSize = 1024;
@@ -29,8 +29,8 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                 try self.terminate_expression();
             }
             try chunk.append_instruction(self.current_address(), .Copy, .{
-                .source = ir.register(u8, last_expression_register),
-                .destination = ir.register(u8, return_register),
+                .source = ir.register(u8, last_expression_register).read_access(),
+                .destination = ir.register(u8, return_register).write_access(),
             });
             return return_register;
         }
@@ -59,9 +59,9 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                     const source_1 = try self.multiply_divide(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Add, .{
-                        .source_0 = ir.register(u8, source_0),
-                        .source_1 = ir.register(u8, source_1),
-                        .destination = ir.register(u8, destination),
+                        .source_0 = ir.register(u8, source_0).read_access(),
+                        .source_1 = ir.register(u8, source_1).read_access(),
+                        .destination = ir.register(u8, destination).write_access(),
                     });
                     source_0 = @intCast(destination);
                 } else if (self.match(.Minus)) {
@@ -71,9 +71,9 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                     const source_1 = try self.multiply_divide(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Subtract, .{
-                        .source_0 = ir.register(u8, source_0),
-                        .source_1 = ir.register(u8, source_1),
-                        .destination = ir.register(u8, destination),
+                        .source_0 = ir.register(u8, source_0).read_access(),
+                        .source_1 = ir.register(u8, source_1).read_access(),
+                        .destination = ir.register(u8, destination).write_access(),
                     });
                     source_0 = @intCast(destination);
                 } else break;
@@ -94,9 +94,9 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                     const source_1 = try self.negate(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Add, .{
-                        .source_0 = ir.register(u8, source_0),
-                        .source_1 = ir.register(u8, source_1),
-                        .destination = ir.register(u8, destination),
+                        .source_0 = ir.register(u8, source_0).read_access(),
+                        .source_1 = ir.register(u8, source_1).read_access(),
+                        .destination = ir.register(u8, destination).write_access(),
                     });
                     std.debug.print("consumed '*'...\n", .{});
                     source_0 = @intCast(destination);
@@ -107,9 +107,9 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                     const source_1 = try self.negate(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Subtract, .{
-                        .source_0 = ir.register(u8, source_0),
-                        .source_1 = ir.register(u8, source_1),
-                        .destination = ir.register(u8, destination),
+                        .source_0 = ir.register(u8, source_0).read_access(),
+                        .source_1 = ir.register(u8, source_1).read_access(),
+                        .destination = ir.register(u8, destination).write_access(),
                     });
                     std.debug.print("consumed '/'...\n", .{});
                     source_0 = @intCast(destination);
@@ -127,8 +127,8 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                 const source = try self.literal(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Negate, .{
-                    .source = ir.register(u8, source),
-                    .destination = ir.register(u8, destination),
+                    .source = ir.register(u8, source).read_access(),
+                    .destination = ir.register(u8, destination).write_access(),
                 });
                 self.advance();
                 return @intCast(destination);
@@ -142,8 +142,8 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                 const destination = chunk.new_register();
                 const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, self.current_token().lexeme(self.tokenizer.input), 0) });
                 try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                    .source = ir.register(u8, source),
-                    .destination = ir.constant(u8, destination),
+                    .source = ir.constant(u8, source),
+                    .destination = ir.register(u8, destination).write_access(),
                 });
                 self.advance();
                 return @intCast(destination);
@@ -151,8 +151,8 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerDebugMode) type {
                 const destination = chunk.new_register();
                 const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, self.current_token().lexeme(self.tokenizer.input)) });
                 try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                    .source = ir.register(u8, source),
-                    .destination = ir.constant(u8, destination),
+                    .source = ir.constant(u8, source),
+                    .destination = ir.register(u8, destination).write_access(),
                 });
                 self.advance();
                 return @intCast(destination);

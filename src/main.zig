@@ -49,7 +49,7 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     const return_register = try parser.parse(&chunk);
     std.debug.print("return_register = {}\n", .{return_register});
 
-    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = ir.register(u8, return_register) });
+    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = ir.register(u8, return_register).read_access() });
 
     var vm = virtual_machine.VirtualMachine(true).init(allocator);
     defer vm.deinit();

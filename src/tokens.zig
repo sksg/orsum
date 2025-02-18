@@ -195,9 +195,9 @@ pub const Token = struct {
     }
 };
 
-pub const TokenizerDebugMode = enum { TokenizeTrace, NoTokenizeTrace };
+pub const TokenizerTracingMode = enum { TokenizeTrace, NoTokenizeTrace };
 
-pub fn Tokenizer(debug_mode: TokenizerDebugMode) type {
+pub fn Tokenizer(debug_mode: TokenizerTracingMode) type {
     return struct {
         const Self = @This();
         const DebugMode = debug_mode;

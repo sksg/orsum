@@ -57,10 +57,6 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
                         const operands = chunk.read_operands(.LoadConstant, &instruction_cursor);
                         registers[operands.destination.index] = chunk.constants.items[operands.source.index];
                     },
-                    .LoadConstantLong => {
-                        const operands = chunk.read_operands(.LoadConstantLong, &instruction_cursor);
-                        registers[operands.destination.index] = chunk.constants.items[operands.source.index];
-                    },
                     .Copy => {
                         const operands = chunk.read_operands(.Copy, &instruction_cursor);
                         registers[operands.destination.index] = registers[operands.source.index];
