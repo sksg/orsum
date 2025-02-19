@@ -19,18 +19,18 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
             return Self{ .tokenizer = tokenizer, .tokens = undefined, .token_count = 0 };
         }
 
-        pub fn parse(self: *Self, chunk: *ir.Chunk) !u32 {
+        pub fn parse(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             std.debug.print("start parsing...\n", .{});
-            const return_register: u32 = @intCast(chunk.new_register());
-            var last_expression_register: u32 = undefined;
+            const return_register = chunk.new_register();
+            var last_expression_register: ir.Register(u8) = undefined;
             while (!self.at_end() and !self.match(.Null)) {
                 self.consume_newlines();
                 last_expression_register = try self.expression(chunk);
                 try self.terminate_expression();
             }
             try chunk.append_instruction(self.current_address(), .Copy, .{
-                .source = ir.register(u8, last_expression_register).read_access(),
-                .destination = ir.register(u8, return_register).write_access(),
+                .source = last_expression_register.read_access(),
+                .destination = return_register.write_access(),
             });
             return return_register;
         }
@@ -42,12 +42,12 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                 return error.ExpressionNotTerminated;
         }
 
-        fn expression(self: *Self, chunk: *ir.Chunk) !u32 {
+        fn expression(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             std.debug.print("try expression...\n", .{});
             return self.add_subtract(chunk);
         }
 
-        fn add_subtract(self: *Self, chunk: *ir.Chunk) !u32 {
+        fn add_subtract(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             var source_0 = try self.multiply_divide(chunk);
 
             std.debug.print("try add_subtract...\n", .{});
@@ -59,11 +59,11 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                     const source_1 = try self.multiply_divide(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Add, .{
-                        .source_0 = ir.register(u8, source_0).read_access(),
-                        .source_1 = ir.register(u8, source_1).read_access(),
-                        .destination = ir.register(u8, destination).write_access(),
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
                     });
-                    source_0 = @intCast(destination);
+                    source_0 = destination;
                 } else if (self.match(.Minus)) {
                     const address = self.current_address();
                     self.advance();
@@ -71,18 +71,18 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                     const source_1 = try self.multiply_divide(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Subtract, .{
-                        .source_0 = ir.register(u8, source_0).read_access(),
-                        .source_1 = ir.register(u8, source_1).read_access(),
-                        .destination = ir.register(u8, destination).write_access(),
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
                     });
-                    source_0 = @intCast(destination);
+                    source_0 = destination;
                 } else break;
             }
 
             return source_0;
         }
 
-        fn multiply_divide(self: *Self, chunk: *ir.Chunk) !u32 {
+        fn multiply_divide(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             var source_0 = try self.negate(chunk);
 
             std.debug.print("try multiply_divide...\n", .{});
@@ -94,12 +94,12 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                     const source_1 = try self.negate(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Add, .{
-                        .source_0 = ir.register(u8, source_0).read_access(),
-                        .source_1 = ir.register(u8, source_1).read_access(),
-                        .destination = ir.register(u8, destination).write_access(),
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
                     });
                     std.debug.print("consumed '*'...\n", .{});
-                    source_0 = @intCast(destination);
+                    source_0 = destination;
                 } else if (self.match(.Slash)) {
                     const address = self.current_address();
                     self.advance();
@@ -107,19 +107,19 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                     const source_1 = try self.negate(chunk);
                     const destination = chunk.new_register();
                     try chunk.append_instruction(address, .Subtract, .{
-                        .source_0 = ir.register(u8, source_0).read_access(),
-                        .source_1 = ir.register(u8, source_1).read_access(),
-                        .destination = ir.register(u8, destination).write_access(),
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
                     });
                     std.debug.print("consumed '/'...\n", .{});
-                    source_0 = @intCast(destination);
+                    source_0 = destination;
                 } else break;
             }
 
             return source_0;
         }
 
-        fn negate(self: *Self, chunk: *ir.Chunk) !u32 {
+        fn negate(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             std.debug.print("try negate...\n", .{});
             if (self.match(.Minus)) {
                 const address = self.current_address();
@@ -127,35 +127,35 @@ pub fn RecursiveDecentParser(tokenizer_debug_mode: TokenizerTracingMode) type {
                 const source = try self.literal(chunk);
                 const destination = chunk.new_register();
                 try chunk.append_instruction(address, .Negate, .{
-                    .source = ir.register(u8, source).read_access(),
-                    .destination = ir.register(u8, destination).write_access(),
+                    .source = source.read_access(),
+                    .destination = destination.write_access(),
                 });
                 self.advance();
-                return @intCast(destination);
+                return destination;
             }
             return try self.literal(chunk);
         }
 
-        fn literal(self: *Self, chunk: *ir.Chunk) !u32 {
+        fn literal(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             std.debug.print("try literal...\n", .{});
             if (self.match(.IntegerLiteral)) {
                 const destination = chunk.new_register();
                 const source = try chunk.append_constant(.{ .Integer = try std.fmt.parseInt(i64, self.current_token().lexeme(self.tokenizer.input), 0) });
                 try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                    .source = ir.constant(u8, source),
-                    .destination = ir.register(u8, destination).write_access(),
+                    .source = source,
+                    .destination = destination.write_access(),
                 });
                 self.advance();
-                return @intCast(destination);
+                return destination;
             } else if (self.match(.FloatLiteral)) {
                 const destination = chunk.new_register();
                 const source = try chunk.append_constant(.{ .FloatingPoint = try std.fmt.parseFloat(f64, self.current_token().lexeme(self.tokenizer.input)) });
                 try chunk.append_instruction(self.current_address(), .LoadConstant, .{
-                    .source = ir.constant(u8, source),
-                    .destination = ir.register(u8, destination).write_access(),
+                    .source = source,
+                    .destination = destination.write_access(),
                 });
                 self.advance();
-                return @intCast(destination);
+                return destination;
             }
 
             return error.ExpectedLiteral;

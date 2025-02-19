@@ -80,7 +80,8 @@ pub const Token = struct {
     }
 
     pub fn init_from_address(input: Source, address: Address) Token {
-        return Tokenizer(.NoTokenizeTrace).init_from_address(input, address).read_token();
+        var tokenizer = Tokenizer(.NoTokenizeTrace).init_from_address(input, address);
+        return tokenizer.read_token();
     }
 
     pub fn lexeme(self: Self, input: Source) []const u8 {
@@ -182,7 +183,7 @@ pub const Token = struct {
             for (0..token_len) |_| {
                 try writer.print("^", .{});
             }
-            try writer.print(" {s}", .{note});
+            try writer.print("{s}", .{note});
         }
 
         pub fn line_number(self: WithDebugInfo) usize {
