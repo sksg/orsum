@@ -86,6 +86,94 @@ pub const Value = union(enum) {
         }
     }
 
+    pub fn equal(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue == rvalue };
+            },
+        }
+    }
+
+    pub fn not_equal(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue != rvalue };
+            },
+        }
+    }
+
+    pub fn greater_than(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            .Boolean => return error.WrongType,
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue > rvalue };
+            },
+        }
+    }
+
+    pub fn less_than(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            .Boolean => return error.WrongType,
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue < rvalue };
+            },
+        }
+    }
+
+    pub fn greater_than_or_equal(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            .Boolean => return error.WrongType,
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue >= rvalue };
+            },
+        }
+    }
+
+    pub fn less_than_or_equal(left: Value, right: Value) !Value {
+        if (@intFromEnum(left) != @intFromEnum(right))
+            return error.DifferentTypes;
+
+        const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
+        switch (left_tag) {
+            .Boolean => return error.WrongType,
+            inline else => |tag| {
+                const lvalue = @field(left, @tagName(tag));
+                const rvalue = @field(right, @tagName(tag));
+                return .{ .Boolean = lvalue <= rvalue };
+            },
+        }
+    }
+
     pub fn format(self: Value, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
             inline else => |value| try std.fmt.format(writer, "{any}", .{value}),

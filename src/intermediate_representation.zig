@@ -139,68 +139,93 @@ pub fn operand_with_debug_info(operand: anytype, registers: ?[]const Value, cons
 pub const Instruction = union(enum(u8)) {
     const Self = @This();
     pub const Tag = std.meta.Tag(Self);
-    pub const __note = "Register-stack based virtual machine instruction set";
 
     LoadConstant: struct {
         source: Constant(u8),
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Constants[source]";
         pub const fmt = "{[destination]} = {[source]}";
     },
     Copy: struct {
         source: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Registers[source]";
         pub const fmt = "{[destination]} = {[source]}";
     },
     Not: struct {
         source: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = -Registers[source]";
         pub const fmt = "{[destination]} = -{[source]}";
     },
     Negate: struct {
         source: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = -Registers[source]";
         pub const fmt = "{[destination]} = -{[source]}";
     },
     Add: struct {
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Registers[source_0] + Registers[source_1]";
         pub const fmt = "{[destination]} = {[source_0]} + {[source_1]}";
     },
     Subtract: struct {
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Registers[source_0] - Registers[source_1]";
         pub const fmt = "{[destination]} = {[source_0]} - {[source_1]}";
     },
     Multiply: struct {
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Registers[source_0] * Registers[source_1]";
         pub const fmt = "{[destination]} = {[source_0]} * {[source_1]}";
     },
     Divide: struct {
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
-        pub const __note = "Registers[destination] = Registers[source_0] / Registers[source_1]";
         pub const fmt = "{[destination]} = {[source_0]} / {[source_1]}";
+    },
+    Equal: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} == {[source_1]}";
+    },
+    NotEqual: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} != {[source_1]}";
+    },
+    GreaterThan: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} > {[source_1]}";
+    },
+    LessThan: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} < {[source_1]}";
+    },
+    GreaterThanOrEqual: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} >= {[source_1]}";
+    },
+    LessThanOrEqual: struct {
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} <= {[source_1]}";
     },
     Print: struct {
         source: Register(u8).Read,
-        pub const __note = "Print(Registers[source])";
         pub const fmt = "Print({[source]})";
     },
     ExitVirtualMachine: struct {
         exit_code: Literal(u8),
-        pub const __note = "Exit(exit_code)";
         pub const fmt = "Exit({[exit_code]})";
     },
 

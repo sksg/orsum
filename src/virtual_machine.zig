@@ -107,6 +107,30 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
                         const operands = chunk.read_operands(.Divide, &instruction_cursor);
                         set_register(registers, operands.destination, try registers[operands.source_0.index].divide(registers[operands.source_1.index]));
                     },
+                    .Equal => {
+                        const operands = chunk.read_operands(.Equal, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].equal(registers[operands.source_1.index]));
+                    },
+                    .NotEqual => {
+                        const operands = chunk.read_operands(.NotEqual, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].not_equal(registers[operands.source_1.index]));
+                    },
+                    .GreaterThan => {
+                        const operands = chunk.read_operands(.GreaterThan, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].greater_than(registers[operands.source_1.index]));
+                    },
+                    .GreaterThanOrEqual => {
+                        const operands = chunk.read_operands(.GreaterThanOrEqual, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].greater_than_or_equal(registers[operands.source_1.index]));
+                    },
+                    .LessThan => {
+                        const operands = chunk.read_operands(.LessThan, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].less_than(registers[operands.source_1.index]));
+                    },
+                    .LessThanOrEqual => {
+                        const operands = chunk.read_operands(.LessThanOrEqual, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source_0.index].less_than_or_equal(registers[operands.source_1.index]));
+                    },
                     .Print => {
                         const operands = chunk.read_operands(.Print, &instruction_cursor);
                         std.debug.print("{}\n", .{registers[operands.source.index]});

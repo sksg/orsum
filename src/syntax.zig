@@ -107,7 +107,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
             var source = try self.expression(chunk);
 
-            if (!self.advance_match(.Newline) and !self.advance_match(.Semicolon))
+            if (!self.advance_match(.Newline) and !self.advance_match(.Semicolon) and !(self.peek() == .Null))
                 return error.StatementNotTerminated;
 
             try append_instruction(chunk, self.current_token.address, .Print, .{ .source = source.read_access() });
@@ -116,7 +116,89 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
         fn expression(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to expression()\n", .{});
-            return self.add_subtract(chunk);
+            return self.comparison(chunk);
+        }
+
+        fn comparison(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+            if (Trace.transition)
+                std.debug.print("PARSER -- Transistion to comparison()\n", .{});
+
+            var source_0 = try self.add_subtract(chunk);
+
+            while (!self.at_end()) {
+                if (Trace.transition)
+                    std.debug.print("PARSER -- Return to comparison()\n", .{});
+
+                if (self.advance_match(.EqualEqual)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .Equal, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else if (self.advance_match(.BangEqual)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .NotEqual, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else if (self.advance_match(.Lesser)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .LessThan, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else if (self.advance_match(.LesserEqual)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .LessThanOrEqual, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else if (self.advance_match(.Greater)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .GreaterThan, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else if (self.advance_match(.GreaterEqual)) {
+                    const address = self.current_token.address;
+                    const source_1 = try self.add_subtract(chunk);
+
+                    const destination = chunk.new_register();
+                    try append_instruction(chunk, address, .GreaterThanOrEqual, .{
+                        .source_0 = source_0.read_access(),
+                        .source_1 = source_1.read_access(),
+                        .destination = destination.write_access(),
+                    });
+                    source_0 = destination;
+                } else break;
+            }
+
+            return source_0;
         }
 
         fn add_subtract(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
