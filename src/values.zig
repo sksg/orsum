@@ -5,6 +5,13 @@ pub const Value = union(enum) {
     FloatingPoint: f64,
     Boolean: bool,
 
+    pub fn not(self: Value) !Value {
+        switch (self) {
+            inline .Boolean => |value, tag| return @unionInit(Value, @tagName(tag), !value),
+            else => return error.WrongType,
+        }
+    }
+
     pub fn negate(self: Value) !Value {
         const self_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(self));
         switch (self_tag) {

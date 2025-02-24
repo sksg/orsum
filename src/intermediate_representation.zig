@@ -153,6 +153,12 @@ pub const Instruction = union(enum(u8)) {
         pub const __note = "Registers[destination] = Registers[source]";
         pub const fmt = "{[destination]} = {[source]}";
     },
+    Not: struct {
+        source: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const __note = "Registers[destination] = -Registers[source]";
+        pub const fmt = "{[destination]} = -{[source]}";
+    },
     Negate: struct {
         source: Register(u8).Read,
         destination: Register(u8).Write,

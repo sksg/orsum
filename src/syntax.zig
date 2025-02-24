@@ -161,7 +161,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to multiply_divide()\n", .{});
 
-            var source_0 = try self.negate(chunk);
+            var source_0 = try self.unary(chunk);
 
             while (!self.at_end()) {
                 if (Trace.transition)
@@ -169,7 +169,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
                 if (self.advance_match(.Star)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.negate(chunk);
+                    const source_1 = try self.unary(chunk);
 
                     const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Multiply, .{
@@ -180,7 +180,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     source_0 = destination;
                 } else if (self.advance_match(.Slash)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.negate(chunk);
+                    const source_1 = try self.unary(chunk);
 
                     const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Divide, .{
@@ -195,7 +195,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             return source_0;
         }
 
-        fn negate(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn unary(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to negate()\n", .{});
 
@@ -215,7 +215,24 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     .destination = destination.write_access(),
                 });
                 return destination;
+            } else if (self.advance_match(.Bang)) {
+                const address = self.current_token.address;
+                const source = self.literal(chunk) catch |err| switch (err) {
+                    error.ExpectedLiteral => return error.ExpectedOperand,
+                    else => return err,
+                };
+
+                if (Trace.transition)
+                    std.debug.print("PARSER -- Return to negate()\n", .{});
+
+                const destination = chunk.new_register();
+                try append_instruction(chunk, address, .Not, .{
+                    .source = source.read_access(),
+                    .destination = destination.write_access(),
+                });
+                return destination;
             }
+
             return self.literal(chunk);
         }
 

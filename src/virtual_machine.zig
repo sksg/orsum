@@ -83,6 +83,10 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
                         const operands = chunk.read_operands(.Copy, &instruction_cursor);
                         set_register(registers, operands.destination, registers[operands.source.index]);
                     },
+                    .Not => {
+                        const operands = chunk.read_operands(.Negate, &instruction_cursor);
+                        set_register(registers, operands.destination, try registers[operands.source.index].not());
+                    },
                     .Negate => {
                         const operands = chunk.read_operands(.Negate, &instruction_cursor);
                         set_register(registers, operands.destination, try registers[operands.source.index].negate());
