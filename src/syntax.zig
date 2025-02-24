@@ -239,6 +239,22 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     .destination = destination.write_access(),
                 });
                 return destination;
+            } else if (self.advance_match(.True)) {
+                const destination = chunk.new_register();
+                const source = try append_constant(chunk, .{ .Boolean = true });
+                try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
+                    .source = source,
+                    .destination = destination.write_access(),
+                });
+                return destination;
+            } else if (self.advance_match(.False)) {
+                const destination = chunk.new_register();
+                const source = try append_constant(chunk, .{ .Boolean = false });
+                try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
+                    .source = source,
+                    .destination = destination.write_access(),
+                });
+                return destination;
             }
 
             return error.ExpectedLiteral;

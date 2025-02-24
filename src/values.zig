@@ -3,10 +3,12 @@ const std = @import("std");
 pub const Value = union(enum) {
     Integer: i64,
     FloatingPoint: f64,
+    Boolean: bool,
 
-    pub fn negate(self: Value) Value {
+    pub fn negate(self: Value) !Value {
         const self_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(self));
         switch (self_tag) {
+            .Boolean => return error.WrongType,
             inline else => |tag| {
                 const value = @field(self, @tagName(tag));
                 return @unionInit(Value, @tagName(tag), -value);
@@ -20,6 +22,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
+            .Boolean => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -34,6 +37,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
+            .Boolean => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -48,6 +52,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
+            .Boolean => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -62,6 +67,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
+            .Boolean => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
