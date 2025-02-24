@@ -70,8 +70,6 @@ pub const Token = struct {
         Identifier,
     };
 
-    pub usingnamespace Tag;
-
     tag: Tag,
     address: Address,
 
@@ -80,7 +78,7 @@ pub const Token = struct {
     }
 
     pub fn init_from_address(input: Source, address: Address) Token {
-        var tokenizer = Tokenizer(.NoTokenizeTrace).init_from_address(input, address);
+        var tokenizer = Tokenizer(Tracing{}).init_from_address(input, address);
         return tokenizer.read_token();
     }
 
@@ -196,12 +194,22 @@ pub const Token = struct {
     }
 };
 
-pub const TokenizerTracingMode = enum { TokenizeTrace, NoTokenizeTrace };
+pub const Tracing = packed struct {
+    consumption: bool = false,
+    production: bool = false,
+    with_input: bool = false,
 
-pub fn Tokenizer(debug_mode: TokenizerTracingMode) type {
+    pub fn any(self: Tracing) bool {
+        return self.consumption and self.production and self.with_input;
+    }
+
+    pub const All = Tracing{ .consumption = true, .production = true, .with_input = true };
+};
+
+pub fn Tokenizer(tracing: Tracing) type {
     return struct {
         const Self = @This();
-        const DebugMode = debug_mode;
+        const Trace = tracing;
 
         input: Token.Source,
         cursor: usize,
@@ -262,11 +270,11 @@ pub fn Tokenizer(debug_mode: TokenizerTracingMode) type {
             return self.null_token();
         }
 
-        pub fn read_into_buffer(self: *Self, buffer: []Token) usize {
+        pub fn read_into_buffer(self: *Self, buffer: anytype) usize {
             var count: usize = 0;
-            while (count < buffer.len) {
+            while (count < buffer.buffer.len) {
                 const _token = self.read_token();
-                buffer[count] = _token;
+                buffer.appendAssumeCapacity(_token);
                 count += 1;
                 if (_token.tag == .Null) {
                     break;
@@ -310,12 +318,14 @@ pub fn Tokenizer(debug_mode: TokenizerTracingMode) type {
 
         pub inline fn init_token(self: *Self, comptime tag: Token.Tag) Token {
             const token = Token.init(tag, self.current_lexeme_address);
-            if (Self.DebugMode == .TokenizeTrace) {
+            if (Trace.production) {
                 const debug_info = token.with_debug_info(self.input);
                 const stderr = std.io.getStdErr().writer();
-                stderr.print("{s}\n", .{debug_info.source_line()}) catch unreachable;
-                debug_info.write_annotation_line(stderr, "") catch unreachable;
-                stderr.print("(l{}:c{}) {}\n", .{ debug_info.line_number(), debug_info.column_number(), debug_info }) catch unreachable;
+                if (Trace.with_input) {
+                    stderr.print("TOKENIZER -- l:{d:0>3}| {s}\nTOKENIZER --        ", .{ debug_info.line_number(), debug_info.source_line() }) catch unreachable;
+                    debug_info.write_annotation_line(stderr, "") catch unreachable;
+                    stderr.print(" (c{}) {}\n", .{ debug_info.column_number(), debug_info }) catch unreachable;
+                }
             }
             return token;
         }
