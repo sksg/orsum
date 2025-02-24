@@ -23,11 +23,11 @@ fn repl(allocator: std.mem.Allocator) !void {
         const maybe_input = try stdin.readUntilDelimiterOrEofAlloc(allocator, '\n', max_line_size);
         if (maybe_input) |input| {
             defer allocator.free(input);
-            var tokenizer = syntax.Tokenizer(.NoTokenizeTrace).init(input);
+            var tokenizer = syntax.Tokenizer(syntax.TokenTracing.All).init(input);
             while (tokenizer.peek() != 0) {
-                var buffer: [1024]syntax.Token = undefined;
-                const token_count = tokenizer.read_into_buffer(&buffer);
-                for (buffer[0..token_count]) |token| {
+                var buffer: std.BoundedArray(syntax.Token, 1024) = std.BoundedArray(syntax.Token, 1024).init(0) catch unreachable;
+                _ = tokenizer.read_into_buffer(&buffer);
+                for (buffer.slice()) |token| {
                     std.debug.print("{}\n", .{token});
                 }
             }
@@ -43,20 +43,33 @@ fn runFile(allocator: std.mem.Allocator, filepath: []const u8) !void {
     const input_buffer = try file.readToEndAlloc(allocator, max_file_size);
     defer allocator.free(input_buffer);
 
-    var tokenizer = syntax.Tokenizer(.NoTokenizeTrace).init(input_buffer);
+    var tokenizer = syntax.Tokenizer(syntax.TokenTracing.All).init(input_buffer);
     var chunk = ir.Chunk.init(allocator);
-    var parser = syntax.RecursiveDecentParser(.NoTokenizeTrace).init(&tokenizer);
-    const return_register = try parser.parse(&chunk);
-    std.debug.print("return_register = {}\n", .{return_register});
+    var parser = syntax.RecursiveDecentParser(@TypeOf(tokenizer), syntax.ParserTracing.All).init(&tokenizer);
+    parser.parse(&chunk) catch |err| switch (err) {
+        error.ParsingFailedWithErrors => {
+            for (parser.errors.slice()) |_err| {
+                const token = _err.token.with_debug_info(input_buffer);
 
-    try chunk.append_instruction(input_buffer.ptr[tokenizer.cursor..], .Print, .{ .source = return_register.read_access() });
+                std.debug.print("{[file]s}:{[line]}:{[column]}: error: {[msg]s}\n", .{
+                    .file = filepath,
+                    .line = token.line_number(),
+                    .column = token.column_number(),
+                    .msg = _err.error_msg(),
+                });
+                std.debug.print("{s}\n", .{token.source_line()});
+                token.write_annotation_line(std.io.getStdErr().writer(), "\n") catch unreachable;
+            }
+            return;
+        },
+        else => return err,
+    };
 
-    var vm = virtual_machine.VirtualMachine(true).init(allocator, input_buffer);
+    var vm = virtual_machine.VirtualMachine(virtual_machine.trace_all).init(allocator, input_buffer);
     defer vm.deinit();
 
-    std.debug.print("Run virtual machine...\n", .{});
     const exit_code = try vm.interpret(&chunk);
-    std.debug.print("Virtual machine has exited normally with exit-code {}!\n", .{exit_code});
+    std.debug.print("Orsum has exited normally with exit-code {}!\n", .{exit_code});
 }
 
 pub fn main() u8 {
