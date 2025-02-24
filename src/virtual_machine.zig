@@ -2,10 +2,26 @@ const std = @import("std");
 const ir = @import("intermediate_representation.zig");
 const syntax = @import("syntax.zig");
 
-pub fn VirtualMachine(comptime debug_mode: bool) type {
+pub const VirtualMachineTracing = packed struct {
+    execution: bool = false,
+    stack: bool = false,
+    with_input: bool = false,
+
+    pub fn any(self: VirtualMachineTracing) bool {
+        return self.execution or self.stack or self.with_input;
+    }
+};
+
+pub const trace_execution = VirtualMachineTracing{ .execution = true };
+pub const trace_execution_and_tack = VirtualMachineTracing{ .execution = true, .stack = true };
+pub const trace_execution_with_input = VirtualMachineTracing{ .execution = true, .with_input = true };
+pub const trace_all = VirtualMachineTracing{ .execution = true, .stack = true, .with_input = true };
+pub const no_trace = VirtualMachineTracing{};
+
+pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
     return struct {
         const Self = @This();
-        const DebugMode = debug_mode;
+        const Trace = tracing_mode;
         register_stack: std.ArrayList(ir.Value),
         input: []const u8,
 
@@ -25,21 +41,23 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
         }
 
         pub fn debug_trace_execution(self: Self, chunk: *const ir.Chunk, current_cursor: usize) void {
-            var debug_cursor = current_cursor;
-            if (DebugMode) {
+            if (Trace.with_input) {
                 const debug_address = chunk.debug_info.read_at(current_cursor);
                 const debug_token = syntax.Token.init_from_address(self.input, debug_address).with_debug_info(self.input);
-                const operation: ir.Instruction.Tag = chunk.read_operation(&debug_cursor);
-                std.debug.print("{s}\n", .{debug_token.source_line()});
+                std.debug.print("VM -- {s}\nVM -- ", .{debug_token.source_line()});
                 debug_token.write_annotation_line(std.io.getStdErr().writer(), " ") catch unreachable;
                 switch (debug_token.token.tag) {
                     inline else => |tag| std.debug.print("Token.{s}\n", .{@tagName(tag)}),
                 }
+            }
+            if (Trace.execution) {
+                var debug_cursor = current_cursor;
+                const operation: ir.Instruction.Tag = chunk.read_operation(&debug_cursor);
                 switch (operation) {
                     inline else => |op| {
                         const operands = chunk.read_operands(op, &debug_cursor);
                         const with_info = ir.Instruction.init_with_debug_info(op, operands, self.register_stack.items, chunk.constants.items);
-                        std.debug.print("({d:0>4}) :: {}\n", .{ current_cursor, with_info });
+                        std.debug.print("VM -- Exec: ({d:0>4}) :: {}\n", .{ current_cursor, with_info });
                     },
                 }
             }
@@ -48,8 +66,8 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
         pub fn interpret(self: *Self, chunk: *const ir.Chunk) !u8 {
             var registers = try self.register_stack.addManyAsSlice(chunk.register_count);
 
-            if (DebugMode)
-                std.debug.print("======\n", .{});
+            if (Trace.any())
+                std.debug.print("VM -- ======\n", .{});
             var instruction_cursor: usize = 0;
             while (!is_at_end(chunk, instruction_cursor)) {
                 const current_cursor = instruction_cursor;
@@ -100,8 +118,8 @@ pub fn VirtualMachine(comptime debug_mode: bool) type {
         }
 
         pub fn set_register(registers: []ir.Value, register: ir.Register(u8).Accessor(.Write), value: ir.Value) void {
-            if (DebugMode) {
-                std.debug.print("{} <- {}\n", .{ register, value });
+            if (Trace.stack) {
+                std.debug.print("VM -- Register update: {} <- {}\n", .{ register, value });
             }
             registers[register.index] = value;
         }
