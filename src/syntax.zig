@@ -354,6 +354,14 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     .destination = destination.write_access(),
                 });
                 return destination;
+            } else if (self.advance_match(.StringLiteral)) {
+                const destination = chunk.new_register();
+                const source = try self.append_string(chunk, self.current_token);
+                try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
+                    .source = source,
+                    .destination = destination.write_access(),
+                });
+                return destination;
             }
 
             return error.ExpectedLiteral;
@@ -364,6 +372,13 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             if (Trace.production)
                 std.debug.print("PARSER -- New constant: {}\n", .{constant.with_debug_info(chunk.constants.items)});
 
+            return constant;
+        }
+
+        fn append_string(self: Self, chunk: *ir.Chunk, token: Token) !ir.Constant(u8) {
+            const constant = try chunk.append_string(token.lexeme(self.tokenizer.input));
+            if (Trace.production)
+                std.debug.print("PARSER -- New string constant: {}\n", .{constant.with_debug_info(chunk.constants.items)});
             return constant;
         }
 

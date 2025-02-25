@@ -6,3 +6,4 @@ true
 2.0 != 2.0
 4 < 6
 5 >= 5
+"test string"

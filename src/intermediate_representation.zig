@@ -370,6 +370,7 @@ pub const Chunk = struct {
         return @TypeOf(@field(@unionInit(Instruction, @tagName(operation), undefined), @tagName(operation)));
     }
 
+    allocator: std.mem.Allocator,
     bytecode: std.ArrayList(u8),
     constants: std.ArrayList(Value),
     register_count: usize,
@@ -377,6 +378,7 @@ pub const Chunk = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
+            .allocator = allocator,
             .bytecode = std.ArrayList(u8).init(allocator),
             .constants = std.ArrayList(Value).init(allocator),
             .register_count = 0,
@@ -386,6 +388,12 @@ pub const Chunk = struct {
 
     pub fn deinit(self: *Self) void {
         self.bytecode.deinit();
+        for (self.constants) |_constant| {
+            switch (_constant) {
+                .String => |string| self.allocator.free(string),
+                else => {},
+            }
+        }
         self.constants.deinit();
         self.debug_info.deinit();
     }
@@ -399,6 +407,12 @@ pub const Chunk = struct {
     pub fn append_constant(self: *Self, value: Value) !Constant(u8) {
         try self.constants.append(value);
         return constant(u8, self.constants.items.len - 1);
+    }
+
+    pub fn append_string(self: *Self, string: []const u8) !Constant(u8) {
+        const string_memory = try self.allocator.alloc(u8, string.len - 2);
+        std.mem.copyForwards(u8, string_memory, string[1 .. string.len - 1]);
+        return self.append_constant(.{ .String = string_memory });
     }
 
     pub fn append_instruction(self: *Self, address: ?Address, comptime operation: Instruction.Tag, operands: Self.OperandType(operation)) !void {
