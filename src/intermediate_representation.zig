@@ -23,10 +23,10 @@ pub fn Register(comptime backing_type: type) type {
                     registers: ?[]const Value,
 
                     pub fn format(with_info: WithDebugInfo, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-                        if (Tag == .Read and with_info.registers != null)
-                            try writer.print("{}{{R{}}}", .{ with_info.registers.?[with_info.accessor.index], with_info.accessor.index })
-                        else
-                            try writer.print("R{}", .{with_info.accessor.index}); // The value is not neccesary with write-only access
+                        if (Tag == .Read and with_info.registers != null) {
+                            const value = with_info.registers.?[with_info.accessor.index];
+                            try writer.print("[.{s}]{}{{R{}}}", .{ @tagName(std.meta.activeTag(value)), value, with_info.accessor.index });
+                        } else try writer.print("R{}", .{with_info.accessor.index}); // The value is not neccesary with write-only access
                     }
                 };
 
@@ -68,10 +68,10 @@ pub fn Constant(comptime backing_type: type) type {
             constants: ?[]const Value,
 
             pub fn format(with_info: WithDebugInfo, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-                if (with_info.constants != null)
-                    try writer.print("{}{{C{}}}", .{ with_info.constants.?[with_info.index], with_info.index })
-                else
-                    try writer.print("C{}", .{with_info.index}); // The value is not neccesary with write-only access
+                if (with_info.constants != null) {
+                    const value = with_info.constants.?[with_info.index];
+                    try writer.print("[.{s}]{}{{C{}}}", .{ @tagName(std.meta.activeTag(value)), value, with_info.index });
+                } else try writer.print("C{}", .{with_info.index}); // The value is not neccesary with write-only access
             }
         };
 
@@ -388,9 +388,9 @@ pub const Chunk = struct {
 
     pub fn deinit(self: *Self) void {
         self.bytecode.deinit();
-        for (self.constants) |_constant| {
-            switch (_constant) {
-                .String => |string| self.allocator.free(string),
+        for (self.constants) |value| {
+            switch (value) {
+                .String => unreachable,
                 else => {},
             }
         }

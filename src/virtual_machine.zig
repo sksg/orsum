@@ -36,6 +36,12 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
         }
 
         pub fn deinit(self: *Self) void {
+            for (self.register_stack.items) |value| {
+                switch (value) {
+                    .String => |string| self.allocator.free(string),
+                    else => {},
+                }
+            }
             self.register_stack.deinit();
         }
 

@@ -110,7 +110,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             if (!self.advance_match(.Newline) and !self.advance_match(.Semicolon) and !(self.peek() == .Null))
                 return error.StatementNotTerminated;
 
-            try append_instruction(chunk, self.current_token.address, .Print, .{ .source = source.read_access() });
+            const destination = chunk.new_register();
+            try append_instruction(chunk, self.current_token.address, .Copy, .{ .source = source.read_access(), .destination = destination.write_access() });
+            try append_instruction(chunk, self.current_token.address, .Print, .{ .source = destination.read_access() });
         }
 
         fn expression(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
