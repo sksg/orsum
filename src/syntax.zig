@@ -356,7 +356,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 return destination;
             } else if (self.advance_match(.StringLiteral)) {
                 const destination = chunk.new_register();
-                const source = try self.append_string(chunk, self.current_token);
+                const source = try append_constant(chunk, ir.Value.init_from_string_literal(self.current_token.lexeme(self.tokenizer.input)));
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
                     .source = source,
                     .destination = destination.write_access(),
@@ -370,15 +370,8 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
         fn append_constant(chunk: *ir.Chunk, value: ir.Value) !ir.Constant(u8) {
             const constant = try chunk.append_constant(value);
             if (Trace.production)
-                std.debug.print("PARSER -- New constant: {}\n", .{constant.with_debug_info(chunk.constants.items)});
+                std.debug.print("PARSER -- New constant: [.{s}] {}\n", .{ @tagName(std.meta.activeTag(value)), constant.with_debug_info(chunk.constants.items) });
 
-            return constant;
-        }
-
-        fn append_string(self: Self, chunk: *ir.Chunk, token: Token) !ir.Constant(u8) {
-            const constant = try chunk.append_string(token.lexeme(self.tokenizer.input));
-            if (Trace.production)
-                std.debug.print("PARSER -- New string constant: {}\n", .{constant.with_debug_info(chunk.constants.items)});
             return constant;
         }
 

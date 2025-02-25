@@ -4,7 +4,23 @@ pub const Value = union(enum) {
     Integer: i64,
     FloatingPoint: f64,
     Boolean: bool,
+    GlobalString: []const u8,
     String: []const u8,
+
+    pub fn init_from_string_literal(string_literal: []const u8) Value {
+        return .{ .GlobalString = string_literal[1 .. string_literal.len - 1] };
+    }
+
+    pub fn copy(self: Value, allocator: std.mem.Allocator) !Value {
+        switch (self) {
+            inline .GlobalString, .String => |string| {
+                const string_copy = try allocator.alloc(u8, string.len);
+                std.mem.copyForwards(u8, string_copy, string);
+                return .{ .String = string_copy };
+            },
+            else => return self,
+        }
+    }
 
     pub fn not(self: Value) !Value {
         switch (self) {
@@ -16,7 +32,7 @@ pub const Value = union(enum) {
     pub fn negate(self: Value) !Value {
         const self_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(self));
         switch (self_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const value = @field(self, @tagName(tag));
                 return @unionInit(Value, @tagName(tag), -value);
@@ -30,7 +46,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -45,7 +61,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -60,7 +76,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -75,7 +91,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -93,7 +109,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .String => return error.WrongType,
+            .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -108,7 +124,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .String => return error.WrongType,
+            .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -123,7 +139,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -138,7 +154,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -153,7 +169,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -168,7 +184,7 @@ pub const Value = union(enum) {
 
         const left_tag: std.meta.Tag(Value) = @enumFromInt(@intFromEnum(left));
         switch (left_tag) {
-            .Boolean, .String => return error.WrongType,
+            .Boolean, .String, .GlobalString => return error.WrongType,
             inline else => |tag| {
                 const lvalue = @field(left, @tagName(tag));
                 const rvalue = @field(right, @tagName(tag));
@@ -179,7 +195,7 @@ pub const Value = union(enum) {
 
     pub fn format(self: Value, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
-            inline .String => |value| try std.fmt.format(writer, "{s}", .{value}),
+            inline .String, .GlobalString => |value| try std.fmt.format(writer, "{s}", .{value}),
             inline else => |value| try std.fmt.format(writer, "{any}", .{value}),
         }
     }

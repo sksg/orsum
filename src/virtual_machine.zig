@@ -22,11 +22,14 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
     return struct {
         const Self = @This();
         const Trace = tracing_mode;
+
+        allocator: std.mem.Allocator,
         register_stack: std.ArrayList(ir.Value),
         input: []const u8,
 
         pub fn init(allocator: std.mem.Allocator, input: []const u8) Self {
             return Self{
+                .allocator = allocator,
                 .register_stack = std.ArrayList(ir.Value).init(allocator),
                 .input = input,
             };
@@ -81,7 +84,7 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
                     },
                     .Copy => {
                         const operands = chunk.read_operands(.Copy, &instruction_cursor);
-                        set_register(registers, operands.destination, registers[operands.source.index]);
+                        set_register(registers, operands.destination, try registers[operands.source.index].copy(self.allocator));
                     },
                     .Not => {
                         const operands = chunk.read_operands(.Negate, &instruction_cursor);

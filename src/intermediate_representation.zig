@@ -409,12 +409,6 @@ pub const Chunk = struct {
         return constant(u8, self.constants.items.len - 1);
     }
 
-    pub fn append_string(self: *Self, string: []const u8) !Constant(u8) {
-        const string_memory = try self.allocator.alloc(u8, string.len - 2);
-        std.mem.copyForwards(u8, string_memory, string[1 .. string.len - 1]);
-        return self.append_constant(.{ .String = string_memory });
-    }
-
     pub fn append_instruction(self: *Self, address: ?Address, comptime operation: Instruction.Tag, operands: Self.OperandType(operation)) !void {
         // A single operation is just appended
         try self.bytecode.append(@intFromEnum(operation));
