@@ -380,10 +380,10 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                             return error.DeclaredVariableTwice;
                     }
                     self.advance();
-                    if (Trace.production)
-                        std.debug.print("PARSER -- Define new variable: {s}\n", .{identifier});
-                    self.block_local_counts.buffer[self.block_local_counts.len - 1] += 1;
                     const variable_register = chunk.new_register();
+                    if (Trace.production)
+                        std.debug.print("PARSER -- Define new variable: {s} {{{}}}\n", .{ identifier, variable_register });
+                    self.block_local_counts.buffer[self.block_local_counts.len - 1] += 1;
                     try self.local_variables.append(.{ .lexeme = identifier, .register = variable_register });
                     _ = try self.expression(chunk, variable_register);
                 } else if (expression_type.* == .Undecided and !self.at_end() and self.peek() == .Equal) {
@@ -403,7 +403,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
                     self.advance();
                     if (Trace.production)
-                        std.debug.print("PARSER -- set variable: {s}\n", .{identifier});
+                        std.debug.print("PARSER -- set variable: {s} {{{}}}\n", .{ identifier, variable_register.? });
                     _ = try self.expression(chunk, variable_register.?);
                 } else {
                     const current_local_count = self.block_local_counts.buffer[self.block_local_counts.len - 1];
@@ -420,7 +420,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                         return error.VariableNotDeclared;
 
                     if (Trace.production)
-                        std.debug.print("PARSER -- Read variable: {s}\n", .{identifier});
+                        std.debug.print("PARSER -- Read variable: {s} {{{}}}\n", .{ identifier, variable_register.? });
                     try append_instruction(chunk, self.current_token.address, .Copy, .{
                         .source = variable_register.?.read_access(),
                         .destination = destination.write_access(),
