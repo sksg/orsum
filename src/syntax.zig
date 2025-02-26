@@ -28,6 +28,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             StatementNotTerminated,
             ExpectedLiteral,
             ExpectedOperand,
+            MissingValidStatement,
+            ExpectedOpenParenthesis,
+            ExpectedCloseParenthesis,
         };
         const Error = struct {
             err: anyerror,
@@ -37,6 +40,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     error.StatementNotTerminated => return "expected ';' or newline to a terminate statement",
                     error.ExpectedLiteral => return "expected a literal",
                     error.ExpectedOperand => return "expected an operand",
+                    error.MissingValidStatement => return "missing a valid statement",
+                    error.ExpectedOpenParenthesis => return "expected '('",
+                    error.ExpectedCloseParenthesis => return "expected ')'",
                     else => unreachable,
                 }
             }
@@ -66,7 +72,8 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 std.debug.print("PARSER -- Next statement at token {} at {}\n", .{ self.peek(), self.next_cursor });
 
                 self.statement(chunk) catch |err| switch (err) {
-                    inline ErrorSet.ExpectedLiteral, ErrorSet.ExpectedOperand, ErrorSet.StatementNotTerminated => |_err| {
+                    error.OutOfMemory, error.Overflow, error.InvalidCharacter => return err,
+                    inline else => |_err| {
                         if (Trace.transition) {
                             std.debug.print("PARSER -- error {} occurred here {}\n", .{ _err, self.next_token().with_debug_info(self.tokenizer.input) });
                             if (@errorReturnTrace()) |trace|
@@ -77,7 +84,6 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                         had_error = true;
                         self.recover_from_error();
                     },
-                    error.OutOfMemory, error.Overflow, error.InvalidCharacter => return err,
                 };
                 self.consume_newlines();
             }
@@ -105,27 +111,44 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to statement()\n", .{});
 
-            var source = try self.expression(chunk);
+            if (self.advance_match(.Print))
+                try self.print(chunk)
+            else
+                return error.MissingValidStatement;
 
             if (!self.advance_match(.Newline) and !self.advance_match(.Semicolon) and !(self.peek() == .Null))
                 return error.StatementNotTerminated;
-
-            const destination = chunk.new_register();
-            try append_instruction(chunk, self.current_token.address, .Copy, .{ .source = source.read_access(), .destination = destination.write_access() });
-            try append_instruction(chunk, self.current_token.address, .Print, .{ .source = destination.read_access() });
         }
 
-        fn expression(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn print(self: *Self, chunk: *ir.Chunk) !void {
+            if (Trace.transition)
+                std.debug.print("PARSER -- Transistion to print()\n", .{});
+
+            if (!self.advance_match(.LeftParen))
+                return error.ExpectedOpenParenthesis;
+
+            var destination = chunk.new_register();
+            try self.expression(chunk, destination);
+
+            if (!self.advance_match(.RightParen))
+                return error.ExpectedCloseParenthesis;
+
+            try append_instruction(chunk, self.current_token.address, .Print, .{
+                .source = destination.read_access(),
+            });
+        }
+
+        fn expression(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to expression()\n", .{});
-            return self.comparison(chunk);
+            return self.comparison(chunk, destination);
         }
 
-        fn comparison(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn comparison(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to comparison()\n", .{});
 
-            var source_0 = try self.add_subtract(chunk);
+            try self.add_subtract(chunk, destination);
 
             while (!self.at_end()) {
                 if (Trace.transition)
@@ -133,81 +156,73 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
                 if (self.advance_match(.EqualEqual)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Equal, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.BangEqual)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .NotEqual, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.Lesser)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .LessThan, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.LesserEqual)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .LessThanOrEqual, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.Greater)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .GreaterThan, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.GreaterEqual)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.add_subtract(chunk);
+                    const source = chunk.new_register();
+                    try self.add_subtract(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .GreaterThanOrEqual, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else break;
             }
-
-            return source_0;
         }
 
-        fn add_subtract(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn add_subtract(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to add_subtract()\n", .{});
 
-            var source_0 = try self.multiply_divide(chunk);
+            try self.multiply_divide(chunk, destination);
 
             while (!self.at_end()) {
                 if (Trace.transition)
@@ -215,37 +230,33 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
                 if (self.advance_match(.Plus)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.multiply_divide(chunk);
+                    const source = chunk.new_register();
+                    try self.multiply_divide(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Add, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.Minus)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.multiply_divide(chunk);
+                    const source = chunk.new_register();
+                    try self.multiply_divide(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Subtract, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else break;
             }
-
-            return source_0;
         }
 
-        fn multiply_divide(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn multiply_divide(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to multiply_divide()\n", .{});
 
-            var source_0 = try self.unary(chunk);
+            try self.unary(chunk, destination);
 
             while (!self.at_end()) {
                 if (Trace.transition)
@@ -253,39 +264,35 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
                 if (self.advance_match(.Star)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.unary(chunk);
+                    const source = chunk.new_register();
+                    try self.unary(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Multiply, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else if (self.advance_match(.Slash)) {
                     const address = self.current_token.address;
-                    const source_1 = try self.unary(chunk);
+                    const source = chunk.new_register();
+                    try self.unary(chunk, source);
 
-                    const destination = chunk.new_register();
                     try append_instruction(chunk, address, .Divide, .{
-                        .source_0 = source_0.read_access(),
-                        .source_1 = source_1.read_access(),
+                        .source_0 = destination.read_access(),
+                        .source_1 = source.read_access(),
                         .destination = destination.write_access(),
                     });
-                    source_0 = destination;
                 } else break;
             }
-
-            return source_0;
         }
 
-        fn unary(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn unary(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
-                std.debug.print("PARSER -- Transistion to negate()\n", .{});
+                std.debug.print("PARSER -- Transistion to unary()\n", .{});
 
             if (self.advance_match(.Minus)) {
                 const address = self.current_token.address;
-                const source = self.literal(chunk) catch |err| switch (err) {
+                self.literal(chunk, destination) catch |err| switch (err) {
                     error.ExpectedLiteral => return error.ExpectedOperand,
                     else => return err,
                 };
@@ -293,15 +300,13 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 if (Trace.transition)
                     std.debug.print("PARSER -- Return to negate()\n", .{});
 
-                const destination = chunk.new_register();
                 try append_instruction(chunk, address, .Negate, .{
-                    .source = source.read_access(),
+                    .source = destination.read_access(),
                     .destination = destination.write_access(),
                 });
-                return destination;
             } else if (self.advance_match(.Bang)) {
                 const address = self.current_token.address;
-                const source = self.literal(chunk) catch |err| switch (err) {
+                self.literal(chunk, destination) catch |err| switch (err) {
                     error.ExpectedLiteral => return error.ExpectedOperand,
                     else => return err,
                 };
@@ -309,64 +314,43 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 if (Trace.transition)
                     std.debug.print("PARSER -- Return to negate()\n", .{});
 
-                const destination = chunk.new_register();
                 try append_instruction(chunk, address, .Not, .{
-                    .source = source.read_access(),
+                    .source = destination.read_access(),
                     .destination = destination.write_access(),
                 });
-                return destination;
-            }
-
-            return self.literal(chunk);
+            } else return self.literal(chunk, destination);
         }
 
-        fn literal(self: *Self, chunk: *ir.Chunk) !ir.Register(u8) {
+        fn literal(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) !void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to literal()\n", .{});
 
             if (self.advance_match(.IntegerLiteral)) {
-                const destination = chunk.new_register();
-                const source = try append_constant(chunk, .{ .Integer = try std.fmt.parseInt(i64, self.current_token.lexeme(self.tokenizer.input), 0) });
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
-                    .source = source,
+                    .source = try append_constant(chunk, .{ .Integer = try std.fmt.parseInt(i64, self.current_token.lexeme(self.tokenizer.input), 0) }),
                     .destination = destination.write_access(),
                 });
-                return destination;
             } else if (self.advance_match(.FloatLiteral)) {
-                const destination = chunk.new_register();
-                const source = try append_constant(chunk, .{ .FloatingPoint = try std.fmt.parseFloat(f64, self.current_token.lexeme(self.tokenizer.input)) });
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
-                    .source = source,
+                    .source = try append_constant(chunk, .{ .FloatingPoint = try std.fmt.parseFloat(f64, self.current_token.lexeme(self.tokenizer.input)) }),
                     .destination = destination.write_access(),
                 });
-                return destination;
             } else if (self.advance_match(.True)) {
-                const destination = chunk.new_register();
-                const source = try append_constant(chunk, .{ .Boolean = true });
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
-                    .source = source,
+                    .source = try append_constant(chunk, .{ .Boolean = true }),
                     .destination = destination.write_access(),
                 });
-                return destination;
             } else if (self.advance_match(.False)) {
-                const destination = chunk.new_register();
-                const source = try append_constant(chunk, .{ .Boolean = false });
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
-                    .source = source,
+                    .source = try append_constant(chunk, .{ .Boolean = false }),
                     .destination = destination.write_access(),
                 });
-                return destination;
             } else if (self.advance_match(.StringLiteral)) {
-                const destination = chunk.new_register();
-                const source = try append_constant(chunk, ir.Value.init_from_string_literal(self.current_token.lexeme(self.tokenizer.input)));
                 try append_instruction(chunk, self.current_token.address, .LoadConstant, .{
-                    .source = source,
+                    .source = try append_constant(chunk, ir.Value.init_from_string_literal(self.current_token.lexeme(self.tokenizer.input))),
                     .destination = destination.write_access(),
                 });
-                return destination;
-            }
-
-            return error.ExpectedLiteral;
+            } else return error.ExpectedLiteral;
         }
 
         fn append_constant(chunk: *ir.Chunk, value: ir.Value) !ir.Constant(u8) {
@@ -386,7 +370,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
 
         fn at_end(self: *Self) bool {
             if (Trace.transition)
-                std.debug.print("PARSER -- Check for terminating token\n", .{});
+                std.debug.print("PARSER -- Check for .EndOfFile\n", .{});
 
             if (self.peek() == .Null)
                 return true;

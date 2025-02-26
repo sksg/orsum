@@ -59,6 +59,7 @@ pub const Token = struct {
         Def,
         Import,
         From,
+        Print,
         // Control flow
         If,
         Else,
@@ -93,7 +94,7 @@ pub const Token = struct {
             // Multi-character
             .Def, .For, .DotDotDot => self.address[0..3],
             .True, .Else, .From => self.address[0..4],
-            .False, .While => self.address[0..5],
+            .False, .While, .Print => self.address[0..5],
             .Switch, .Import => self.address[0..6],
             // Unknown length
             .IntegerLiteral => self.address[0..peek_integer_literal_end(input, self.address)],
@@ -258,6 +259,7 @@ pub fn Tokenizer(tracing: Tracing) type {
                     'w' => return self.match_token("hile", .While) orelse self.identifier(),
                     'd' => return self.match_token("o", .Do) orelse self.match_token("ef", .Def) orelse self.identifier(),
                     's' => return self.match_token("witch", .Switch) orelse self.identifier(),
+                    'p' => return self.match_token("rint", .Print) orelse self.identifier(),
                     // Unknown length
                     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => return self.number_literal(),
                     '"' => return self.string_literal(),
