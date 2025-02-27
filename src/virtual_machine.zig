@@ -73,10 +73,15 @@ pub fn VirtualMachine(comptime tracing_mode: VirtualMachineTracing) type {
         }
 
         pub fn interpret(self: *Self, chunk: *const ir.Chunk) !u8 {
-            var registers = try self.register_stack.addManyAsSlice(chunk.register_count);
-
             if (Trace.any())
                 std.debug.print("VM -- ======\n", .{});
+
+            var registers = try self.register_stack.addManyAsSlice(chunk.maximum_register_count);
+            if (Trace.stack) {
+                std.debug.print("VM -- Register stack size: {}\n", .{registers.len});
+                std.debug.print("VM -- ------\n", .{});
+            }
+
             var instruction_cursor: usize = 0;
             while (!is_at_end(chunk, instruction_cursor)) {
                 const current_cursor = instruction_cursor;

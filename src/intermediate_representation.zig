@@ -10,6 +10,7 @@ pub fn Register(comptime backing_type: type) type {
         const Read = Accessor(.Read);
         const Write = Accessor(.Write);
         index: backing_type,
+        temporary: bool = true,
 
         pub fn Accessor(comptime tag: AccessorTag) type {
             return struct {
@@ -373,7 +374,8 @@ pub const Chunk = struct {
     allocator: std.mem.Allocator,
     bytecode: std.ArrayList(u8),
     constants: std.ArrayList(Value),
-    register_count: usize,
+    current_register_count: usize = 0,
+    maximum_register_count: usize = 0,
     debug_info: RunLengthEncodedArrayList(Address),
 
     pub fn init(allocator: std.mem.Allocator) Self {
@@ -381,7 +383,6 @@ pub const Chunk = struct {
             .allocator = allocator,
             .bytecode = std.ArrayList(u8).init(allocator),
             .constants = std.ArrayList(Value).init(allocator),
-            .register_count = 0,
             .debug_info = RunLengthEncodedArrayList(Address).init(allocator),
         };
     }
@@ -399,9 +400,15 @@ pub const Chunk = struct {
     }
 
     pub fn new_register(self: *Self) Register(u8) {
-        const _register = register(u8, self.register_count);
-        self.register_count += 1;
+        const _register = register(u8, self.current_register_count);
+        self.current_register_count += 1;
+        if (self.current_register_count > self.maximum_register_count)
+            self.maximum_register_count = self.current_register_count;
         return _register;
+    }
+
+    pub fn free_register(self: *Self) void {
+        self.current_register_count -= 1;
     }
 
     pub fn append_constant(self: *Self, value: Value) !Constant(u8) {

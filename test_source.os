@@ -3,4 +3,5 @@ print(test)
 test = false
 print(test)
 test1 := "a string"
-print(test2)
+print(test1)
+print(test)
