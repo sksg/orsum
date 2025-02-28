@@ -160,7 +160,15 @@ pub const Instruction = union(enum(u8)) {
         destination: Register(u8).Write,
         pub const fmt = "{[destination]} = -{[source]}";
     },
-    Add: struct {
+    Add_I64: struct {
+        pub const ValueType = i64;
+        source_0: Register(u8).Read,
+        source_1: Register(u8).Read,
+        destination: Register(u8).Write,
+        pub const fmt = "{[destination]} = {[source_0]} + {[source_1]}";
+    },
+    Add_F64: struct {
+        pub const ValueType = f64;
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
@@ -202,23 +210,11 @@ pub const Instruction = union(enum(u8)) {
         destination: Register(u8).Write,
         pub const fmt = "{[destination]} = {[source_0]} > {[source_1]}";
     },
-    LessThan: struct {
-        source_0: Register(u8).Read,
-        source_1: Register(u8).Read,
-        destination: Register(u8).Write,
-        pub const fmt = "{[destination]} = {[source_0]} < {[source_1]}";
-    },
     GreaterThanOrEqual: struct {
         source_0: Register(u8).Read,
         source_1: Register(u8).Read,
         destination: Register(u8).Write,
         pub const fmt = "{[destination]} = {[source_0]} >= {[source_1]}";
-    },
-    LessThanOrEqual: struct {
-        source_0: Register(u8).Read,
-        source_1: Register(u8).Read,
-        destination: Register(u8).Write,
-        pub const fmt = "{[destination]} = {[source_0]} <= {[source_1]}";
     },
     Print: struct {
         source: Register(u8).Read,
@@ -339,7 +335,7 @@ test "formatting of instructions" {
         Instruction{ .LoadConstant = .{ .source = constant(u8, 1), .destination = register(u8, 0).write_access() } },
         Instruction{ .Copy = .{ .source = register(u8, 1).read_access(), .destination = register(u8, 2).write_access() } },
         Instruction{ .Negate = .{ .source = register(u8, 2).read_access(), .destination = register(u8, 3).write_access() } },
-        Instruction{ .Add = .{ .source_0 = register(u8, 3).read_access(), .source_1 = register(u8, 4).read_access(), .destination = register(u8, 5).write_access() } },
+        Instruction{ .Add_I64 = .{ .source_0 = register(u8, 3).read_access(), .source_1 = register(u8, 4).read_access(), .destination = register(u8, 5).write_access() } },
         Instruction{ .Subtract = .{ .source_0 = register(u8, 5).read_access(), .source_1 = register(u8, 6).read_access(), .destination = register(u8, 7).write_access() } },
         Instruction{ .Multiply = .{ .source_0 = register(u8, 7).read_access(), .source_1 = register(u8, 8).read_access(), .destination = register(u8, 9).write_access() } },
         Instruction{ .Divide = .{ .source_0 = register(u8, 9).read_access(), .source_1 = register(u8, 10).read_access(), .destination = register(u8, 11).write_access() } },

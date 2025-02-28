@@ -216,9 +216,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     const source = chunk.new_register();
                     try self.add_subtract(chunk, source, expression_type);
 
-                    try append_instruction(chunk, address, .LessThan, .{
-                        .source_0 = destination.read_access(),
-                        .source_1 = source.read_access(),
+                    try append_instruction(chunk, address, .GreaterThanOrEqual, .{
+                        .source_1 = destination.read_access(),
+                        .source_0 = source.read_access(),
                         .destination = destination.write_access(),
                     });
                     expression_type.* = .RightValue;
@@ -227,9 +227,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     const source = chunk.new_register();
                     try self.add_subtract(chunk, source, expression_type);
 
-                    try append_instruction(chunk, address, .LessThanOrEqual, .{
-                        .source_0 = destination.read_access(),
-                        .source_1 = source.read_access(),
+                    try append_instruction(chunk, address, .GreaterThan, .{
+                        .source_1 = destination.read_access(),
+                        .source_0 = source.read_access(),
                         .destination = destination.write_access(),
                     });
                     chunk.free_register();
@@ -277,7 +277,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     const source = chunk.new_register();
                     try self.multiply_divide(chunk, source, expression_type);
 
-                    try append_instruction(chunk, address, .Add, .{
+                    try append_instruction(chunk, address, .Add_I64, .{
                         .source_0 = destination.read_access(),
                         .source_1 = source.read_access(),
                         .destination = destination.write_access(),
