@@ -10,7 +10,6 @@ pub fn Register(comptime backing_type: type) type {
         const Read = Accessor(.Read);
         const Write = Accessor(.Write);
         index: backing_type,
-        temporary: bool = true,
 
         pub fn Accessor(comptime tag: AccessorTag) type {
             return struct {
