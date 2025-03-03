@@ -129,12 +129,14 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             RightValue,
         };
 
-        fn statement(self: *Self, chunk: *ir.Chunk) !void {
+        fn statement(self: *Self, chunk: *ir.Chunk) ErrorSet!void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to statement()\n", .{});
 
             if (self.advance_match(.Print))
                 try self.print(chunk)
+            else if (self.advance_match(.LeftBrace))
+                try self.block(chunk)
             else {
                 const temporary_destination = chunk.new_register();
                 _ = try self.expression(chunk, temporary_destination);
@@ -168,6 +170,21 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 .source = destination.read_access(),
             });
             chunk.free_register();
+        }
+
+        fn block(self: *Self, chunk: *ir.Chunk) !void {
+            if (Trace.transition)
+                std.debug.print("PARSER -- Transistion to block()\n", .{});
+
+            self.block_local_counts.append(0) catch unreachable;
+
+            while (!self.at_end() and !self.advance_match(.RightBrace)) {
+                self.consume_newlines();
+                try self.statement(chunk);
+            }
+
+            const previous_block_end = self.local_variables.len - self.block_local_counts.pop();
+            self.local_variables.resize(previous_block_end) catch unreachable;
         }
 
         fn expression(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) ErrorSet!void {
@@ -386,7 +403,8 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     const current_local_count = self.block_local_counts.buffer[self.block_local_counts.len - 1];
                     const end = self.local_variables.len;
                     const start = end - current_local_count;
-                    for (self.local_variables.buffer[start..end]) |local| {
+                    var iter = std.mem.reverseIterator(self.local_variables.buffer[start..end]);
+                    while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier))
                             return error.DeclaredVariableTwice;
                     }
@@ -400,11 +418,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     _ = try self.expression(chunk, variable_register);
                 } else if (expression_type.* == .Undecided and !self.at_end() and self.peek() == .Equal) {
                     expression_type.* = .LeftValue;
-                    const current_local_count = self.block_local_counts.buffer[self.block_local_counts.len - 1];
-                    const end = self.local_variables.len;
-                    const start = end - current_local_count;
                     var variable_register: ?ir.Register(u8) = null;
-                    for (self.local_variables.buffer[start..end]) |local| {
+                    var iter = std.mem.reverseIterator(self.local_variables.slice());
+                    while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier)) {
                             variable_register = local.register;
                             break;
@@ -418,11 +434,9 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                         std.debug.print("PARSER -- set variable: {s} {{{}}}\n", .{ identifier, variable_register.? });
                     _ = try self.expression(chunk, variable_register.?);
                 } else {
-                    const current_local_count = self.block_local_counts.buffer[self.block_local_counts.len - 1];
-                    const end = self.local_variables.len;
-                    const start = end - current_local_count;
                     var variable_register: ?ir.Register(u8) = null;
-                    for (self.local_variables.buffer[start..end]) |local| {
+                    var iter = std.mem.reverseIterator(self.local_variables.slice());
+                    while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier)) {
                             variable_register = local.register;
                             break;
