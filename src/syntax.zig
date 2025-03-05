@@ -31,15 +31,22 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             MissingValidStatement,
             ExpectedOpenParenthesis,
             ExpectedCloseParenthesis,
+            DeclaredVariableTwice,
+            VariableNotDeclared,
+            VariableRegisterMismatch,
+            UnknownError,
+        };
+
+        const BackendErrors = error{
             Overflow,
             OutOfMemory,
             InvalidCharacter,
-            DeclaredVariableTwice,
-            VariableNotDeclared,
         };
 
+        const AllErrors = ErrorSet || BackendErrors;
+
         const Error = struct {
-            err: anyerror,
+            err: ErrorSet,
             token: Token,
             pub fn error_msg(self: Error) []const u8 {
                 switch (self.err) {
@@ -51,8 +58,25 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     error.ExpectedCloseParenthesis => return "expected ')'",
                     error.DeclaredVariableTwice => return "variable declared twice",
                     error.VariableNotDeclared => return "variable not declared",
-                    else => unreachable,
+                    error.VariableRegisterMismatch => return "variable register was not as expected",
+                    error.UnknownError => unreachable,
                 }
+            }
+
+            pub fn is_parser_error(comptime err: anytype) bool {
+                inline for (@typeInfo(ErrorSet).ErrorSet.?) |field| {
+                    if (err == @field(ErrorSet, field.name))
+                        return true;
+                }
+                return false;
+            }
+
+            pub fn as_parser_error(comptime err: anytype) ErrorSet {
+                inline for (@typeInfo(ErrorSet).ErrorSet.?) |field| {
+                    if (err == @field(ErrorSet, field.name))
+                        return @field(ErrorSet, field.name);
+                }
+                return ErrorSet.UnknownError;
             }
         };
 
@@ -61,13 +85,6 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
         current_token: Token = undefined,
         next_cursor: usize = 0,
         errors: std.BoundedArray(Error, 256) = std.BoundedArray(Error, 256).init(0) catch unreachable,
-        local_variables: std.BoundedArray(Local, 256) = std.BoundedArray(Local, 256).init(0) catch unreachable,
-        block_local_counts: std.BoundedArray(u8, 256) = std.BoundedArray(u8, 256).init(0) catch unreachable,
-
-        const Local = struct {
-            lexeme: []const u8,
-            register: ir.Register(u8),
-        };
 
         pub fn init(tokenizer: *TokenizerType) Self {
             return Self{ .tokenizer = tokenizer };
@@ -81,22 +98,24 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 self.refill_token_buffer() catch unreachable;
 
             var had_error = false;
-            self.block_local_counts.append(0) catch unreachable;
+            chunk.block_locals.append(0) catch unreachable;
 
             self.consume_newlines();
             while (!self.at_end()) {
                 std.debug.print("PARSER -- Next statement at token {} at {}\n", .{ self.peek(), self.next_cursor });
 
                 self.statement(chunk) catch |err| switch (err) {
-                    error.OutOfMemory, error.Overflow, error.InvalidCharacter => return err,
                     inline else => |_err| {
+                        if (!Error.is_parser_error(_err))
+                            return _err;
+
                         if (Trace.transition) {
                             std.debug.print("PARSER -- error {} occurred here {}\n", .{ _err, self.current_token.with_debug_info(self.tokenizer.input) });
                             if (@errorReturnTrace()) |trace|
                                 std.debug.dumpStackTrace(trace.*);
                         }
 
-                        try self.errors.append(Error{ .err = _err, .token = self.current_token });
+                        try self.errors.append(Error{ .err = Error.as_parser_error(_err), .token = self.current_token });
                         had_error = true;
                         self.recover_from_error();
                     },
@@ -129,7 +148,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             RightValue,
         };
 
-        fn statement(self: *Self, chunk: *ir.Chunk) ErrorSet!void {
+        fn statement(self: *Self, chunk: *ir.Chunk) AllErrors!void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to statement()\n", .{});
 
@@ -176,18 +195,17 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to block()\n", .{});
 
-            self.block_local_counts.append(0) catch unreachable;
+            try chunk.push_block();
 
             while (!self.at_end() and !self.advance_match(.RightBrace)) {
                 self.consume_newlines();
                 try self.statement(chunk);
             }
 
-            const previous_block_end = self.local_variables.len - self.block_local_counts.pop();
-            self.local_variables.resize(previous_block_end) catch unreachable;
+            chunk.pop_block();
         }
 
-        fn expression(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) ErrorSet!void {
+        fn expression(self: *Self, chunk: *ir.Chunk, destination: ir.Register(u8)) AllErrors!void {
             if (Trace.transition)
                 std.debug.print("PARSER -- Transistion to expression()\n", .{});
             var expression_type = ExpressionType.Undecided;
@@ -400,26 +418,25 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                 const identifier = self.current_token.lexeme(self.tokenizer.input);
                 if (expression_type.* == .Undecided and !self.at_end() and self.peek() == .ColonEqual) {
                     expression_type.* = .LeftValue;
-                    const current_local_count = self.block_local_counts.buffer[self.block_local_counts.len - 1];
-                    const end = self.local_variables.len;
+                    const current_local_count = chunk.block_locals.buffer[chunk.block_locals.len - 1];
+                    const end = chunk.local_variables.len;
                     const start = end - current_local_count;
-                    var iter = std.mem.reverseIterator(self.local_variables.buffer[start..end]);
+                    var iter = std.mem.reverseIterator(chunk.local_variables.buffer[start..end]);
                     while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier))
                             return error.DeclaredVariableTwice;
                     }
                     self.advance();
-                    const variable_register = destination;
-                    _ = chunk.new_register(); // Needed to keep the register count in sync
                     if (Trace.production)
-                        std.debug.print("PARSER -- Define new variable: {s} {{{}}}\n", .{ identifier, variable_register });
-                    self.block_local_counts.buffer[self.block_local_counts.len - 1] += 1;
-                    try self.local_variables.append(.{ .lexeme = identifier, .register = variable_register });
-                    _ = try self.expression(chunk, variable_register);
+                        std.debug.print("PARSER -- Define new variable: {s} {{{}}}\n", .{ identifier, destination });
+                    try chunk.append_local_variable(identifier, destination);
+                    _ = chunk.new_register(); // Needed to keep the register count in sync
+
+                    _ = try self.expression(chunk, destination);
                 } else if (expression_type.* == .Undecided and !self.at_end() and self.peek() == .Equal) {
                     expression_type.* = .LeftValue;
                     var variable_register: ?ir.Register(u8) = null;
-                    var iter = std.mem.reverseIterator(self.local_variables.slice());
+                    var iter = std.mem.reverseIterator(chunk.local_variables.slice());
                     while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier)) {
                             variable_register = local.register;
@@ -435,7 +452,7 @@ pub fn RecursiveDecentParser(TokenizerType: type, tracing: ParserTracing) type {
                     _ = try self.expression(chunk, variable_register.?);
                 } else {
                     var variable_register: ?ir.Register(u8) = null;
-                    var iter = std.mem.reverseIterator(self.local_variables.slice());
+                    var iter = std.mem.reverseIterator(chunk.local_variables.slice());
                     while (iter.next()) |local| {
                         if (std.mem.eql(u8, local.lexeme, identifier)) {
                             variable_register = local.register;

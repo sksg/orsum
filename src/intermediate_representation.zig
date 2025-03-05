@@ -372,6 +372,12 @@ pub const Chunk = struct {
     current_register_count: usize = 0,
     maximum_register_count: usize = 0,
     debug_info: RunLengthEncodedArrayList(Address),
+    local_variables: std.BoundedArray(Local, 256) = std.BoundedArray(Local, 256).init(0) catch unreachable,
+    block_locals: std.BoundedArray(u8, 256) = std.BoundedArray(u8, 256).init(0) catch unreachable,
+    const Local = struct {
+        lexeme: []const u8,
+        register: Register(u8),
+    };
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
@@ -409,6 +415,22 @@ pub const Chunk = struct {
     pub fn append_constant(self: *Self, value: Value) !Constant(u8) {
         try self.constants.append(value);
         return constant(u8, self.constants.items.len - 1);
+    }
+
+    pub fn append_local_variable(self: *Self, lexeme: []const u8, destination: Register(u8)) !void {
+        if (self.local_variables.len != destination.index)
+            return error.VariableRegisterMismatch;
+
+        try self.local_variables.append(.{ .lexeme = lexeme, .register = destination });
+        self.block_locals.buffer[self.block_locals.len - 1] += 1;
+    }
+
+    pub fn push_block(self: *Self) !void {
+        try self.block_locals.append(0);
+    }
+
+    pub fn pop_block(self: *Self) void {
+        self.local_variables.resize(self.local_variables.len - self.block_locals.pop()) catch unreachable;
     }
 
     pub fn append_instruction(self: *Self, address: ?Address, comptime operation: Instruction.Tag, operands: Self.OperandType(operation)) !void {

@@ -6,6 +6,7 @@ print(test)
     print(test)
     test2 := test
     print(test2)
+    test = 38
     test := "another string"
     print(test)
 }
